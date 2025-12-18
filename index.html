@@ -7,19 +7,16 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app" id="app">
+  <div class="app">
     <div class="topbar">
-      <div class="title">
-        <div class="dot" id="statusDot"></div>
-        <div>
-          <div class="name">AI Assistant</div>
-          <div class="sub" id="statusText">Checking Ollama…</div>
-        </div>
+      <div class="brand">
+        <div class="brandTitle">AI Assistant</div>
+        <div class="brandSub" id="statusText">Checking local model…</div>
       </div>
 
-      <div class="actions">
-        <button class="iconbtn" id="themeBtn" title="Toggle theme">☾</button>
-        <button class="iconbtn" id="closeBtn" title="Hide">✕</button>
+      <div class="topActions">
+        <button class="iconBtn" id="themeBtn" title="Toggle theme">☾</button>
+        <button class="iconBtn" id="closeBtn" title="Hide">✕</button>
       </div>
     </div>
 
@@ -28,11 +25,20 @@
     <div class="messages" id="messages"></div>
 
     <div class="composer">
-      <textarea id="input" rows="1" placeholder="Ask anything… (Enter to send, Shift+Enter for new line)"></textarea>
-      <button id="sendBtn">Send</button>
+      <input type="file" id="fileInput" hidden multiple accept=".txt,.md,.json" />
+
+      <button class="pillBtn" id="uploadBtn" title="Upload a file">＋</button>
+
+      <textarea
+        id="input"
+        rows="1"
+        placeholder="Ask anything… (Enter to send, Shift+Enter new line)"
+      ></textarea>
+
+      <button class="sendBtn" id="sendBtn">Send</button>
     </div>
 
-    <div class="hint">Tip: Ctrl + Shift + A + I to show/hide</div>
+    <div class="footerHint" id="hint"></div>
   </div>
 
   <script src="renderer.js"></script>
