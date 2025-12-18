@@ -5,7 +5,6 @@ const sendBtn = document.getElementById("sendBtn");
 const toast = document.getElementById("toast");
 const statusText = document.getElementById("statusText");
 
-const themeBtn = document.getElementById("themeBtn");
 const closeBtn = document.getElementById("closeBtn");
 const minBtn = document.getElementById("minBtn");
 const maxBtn = document.getElementById("maxBtn");
@@ -17,6 +16,10 @@ const providerSelect = document.getElementById("providerSelect");
 const apiKeyInput = document.getElementById("apiKeyInput");
 const saveKeyBtn = document.getElementById("saveKeyBtn");
 const keyStatus = document.getElementById("keyStatus");
+
+const themeBtn = document.getElementById("themeBtn");
+const themeIconMoon = document.getElementById("themeIconMoon");
+const themeIconSun = document.getElementById("themeIconSun");
 
 const uploadBtn = document.getElementById("uploadBtn");
 const fileInput = document.getElementById("fileInput");
@@ -39,9 +42,16 @@ function showToast(msg, ms = 1400) {
   showToast._t = setTimeout(() => toast.classList.remove("show"), ms);
 }
 
+function applyThemeIcon(theme) {
+  const isDark = theme === "dark";
+  themeIconMoon.style.display = isDark ? "block" : "none";
+  themeIconSun.style.display = isDark ? "none" : "block";
+}
+
 function setTheme(theme) {
   document.body.setAttribute("data-theme", theme);
   localStorage.setItem("theme", theme);
+  applyThemeIcon(theme);
 }
 
 function toggleTheme() {
@@ -104,7 +114,6 @@ settingsBtn.addEventListener("click", () => {
 });
 settingsCloseBtn.addEventListener("click", closeSettings);
 
-// Close settings if you click outside it
 document.addEventListener("mousedown", (e) => {
   if (!settingsPanel.classList.contains("open")) return;
   const inside = settingsPanel.contains(e.target) || settingsBtn.contains(e.target);
@@ -147,16 +156,15 @@ async function refreshHealth() {
 
   if (h.provider === "openai") {
     statusText.textContent = h.ok
-      ? `Provider: OpenAI (key set) • Model: ${h.model}`
-      : `Provider: OpenAI (key missing) • Model: ${h.model}`;
+      ? `Provider: OpenAI • Model: ${h.model}`
+      : `Provider: OpenAI • Key missing`;
     return;
   }
 
-  // Ollama
   if (h.ok) {
     statusText.textContent = h.hasModel
       ? `Provider: Local (Ollama) • Connected • ${h.model}`
-      : `Provider: Local (Ollama) • Connected • ${h.model} not found`;
+      : `Provider: Local (Ollama) • Connected • Model not found`;
   } else {
     statusText.textContent = `Provider: Local (Ollama) • Not reachable`;
   }
@@ -203,7 +211,6 @@ async function syncMaxState() {
   const isMax = await window.api.isMaximized();
   appEl.classList.toggle("maxed", !!isMax);
 }
-
 window.api.onState(({ maximized }) => {
   appEl.classList.toggle("maxed", !!maximized);
 });
