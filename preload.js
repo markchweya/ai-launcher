@@ -1,5 +1,6 @@
-const { contextBridge } = require("electron");
+const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("api", {
-  log: (msg) => console.log("[renderer]", msg)
+  ask: (history) => ipcRenderer.invoke("ai:ask", history),
+  hide: () => ipcRenderer.invoke("win:hide")
 });
