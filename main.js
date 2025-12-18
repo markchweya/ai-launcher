@@ -8,9 +8,9 @@ function createWindow() {
 
   win = new BrowserWindow({
     width: 420,
-    height: 520,
+    height: 560,
     x: width - 460,
-    y: height - 580,
+    y: height - 620,
     frame: false,
     alwaysOnTop: true,
     show: true,
@@ -47,62 +47,74 @@ ipcMain.handle("win:hide", async () => {
   return true;
 });
 
-function postJSON(url, payload, timeoutMs = 60000) {
+function requestJSON({ method, url, payload, timeoutMs = 60000 }) {
   return new Promise((resolve, reject) => {
-    const request = net.request({
-      method: "POST",
-      url
-    });
-
-    request.setHeader("Content-Type", "application/json");
+    const req = net.request({ method, url });
+    req.setHeader("Content-Type", "application/json");
 
     const timer = setTimeout(() => {
-      try { request.abort(); } catch {}
-      reject(new Error("Ollama request timed out. Try a lighter model or check Ollama is responsive."));
+      try { req.abort(); } catch {}
+      reject(new Error("Request timed out."));
     }, timeoutMs);
 
-    request.on("response", (response) => {
+    req.on("response", (res) => {
       let body = "";
-      response.on("data", (chunk) => (body += chunk.toString("utf8")));
-      response.on("end", () => {
+      res.on("data", (chunk) => (body += chunk.toString("utf8")));
+      res.on("end", () => {
         clearTimeout(timer);
-        if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
-          try {
-            resolve(JSON.parse(body));
-          } catch (e) {
-            reject(new Error("Failed to parse Ollama JSON response: " + body.slice(0, 300)));
-          }
-        } else {
-          reject(new Error(`Ollama error (${response.statusCode}): ${body.slice(0, 500)}`));
+        const ok = res.statusCode >= 200 && res.statusCode < 300;
+        if (!ok) return reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 400)}`));
+        try {
+          resolve(JSON.parse(body));
+        } catch {
+          reject(new Error(`Bad JSON: ${body.slice(0, 300)}`));
         }
       });
     });
 
-    request.on("error", (err) => {
+    req.on("error", (err) => {
       clearTimeout(timer);
       reject(err);
     });
 
-    request.write(JSON.stringify(payload));
-    request.end();
+    if (payload) req.write(JSON.stringify(payload));
+    req.end();
   });
 }
 
-async function askOllama(history) {
- const model = "gemma3:4b";
- // you have this installed
-  const url = "http://127.0.0.1:11434/api/chat";
+// Choose one you already have:
+const OLLAMA_MODEL = "mistral:latest"; // or "llama3:latest" or "gemma3:4b"
+const OLLAMA_CHAT_URL = "http://127.0.0.1:11434/api/chat";
+const OLLAMA_TAGS_URL = "http://127.0.0.1:11434/api/tags";
 
-  const data = await postJSON(url, {
-    model,
-    messages: history,
-    stream: false
+async function askOllama(history) {
+  const data = await requestJSON({
+    method: "POST",
+    url: OLLAMA_CHAT_URL,
+    payload: { model: OLLAMA_MODEL, messages: history, stream: false },
+    timeoutMs: 120000
   });
 
   return data?.message?.content?.trim() || "I didn’t get a response from the model.";
 }
 
 ipcMain.handle("ai:ask", async (event, history) => {
-  console.log("AI ask:", { messages: history?.length });
   return await askOllama(history);
+});
+
+ipcMain.handle("ai:health", async () => {
+  try {
+    const data = await requestJSON({
+      method: "GET",
+      url: OLLAMA_TAGS_URL,
+      payload: null,
+      timeoutMs: 4000
+    });
+
+    const modelNames = (data?.models || []).map(m => m.name);
+    const hasModel = modelNames.includes(OLLAMA_MODEL);
+    return { ok: true, model: OLLAMA_MODEL, hasModel, models: modelNames.slice(0, 20) };
+  } catch (e) {
+    return { ok: false, model: OLLAMA_MODEL, error: e.message || String(e) };
+  }
 });
