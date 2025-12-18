@@ -7,10 +7,10 @@ function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
   win = new BrowserWindow({
-    width: 420,
-    height: 560,
-    x: width - 460,
-    y: height - 620,
+    width: 440,
+    height: 620,
+    x: width - 480,
+    y: height - 680,
     frame: false,
     alwaysOnTop: true,
     show: true,
@@ -27,18 +27,27 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  const accelerator = "Control+Shift+A+I";
-  const ok = globalShortcut.register(accelerator, () => {
-    if (!win) return;
-    if (win.isVisible()) win.hide();
-    else {
-      win.show();
-      win.focus();
-    }
-  });
+  // Attempt A+I (often fails / unreliable), then fall back.
+  const preferred = "A+I";
+  const fallback = "Alt+I";
 
-  console.log(ok ? `Shortcut registered: ${accelerator}` : `Shortcut failed: ${accelerator}`);
+  let ok = globalShortcut.register(preferred, () => toggleWin());
+  if (!ok) {
+    ok = globalShortcut.register(fallback, () => toggleWin());
+    console.log(`A+I failed. Using fallback shortcut: ${fallback}`);
+  } else {
+    console.log(`Shortcut registered: ${preferred}`);
+  }
 });
+
+function toggleWin() {
+  if (!win) return;
+  if (win.isVisible()) win.hide();
+  else {
+    win.show();
+    win.focus();
+  }
+}
 
 app.on("will-quit", () => globalShortcut.unregisterAll());
 
@@ -64,11 +73,8 @@ function requestJSON({ method, url, payload, timeoutMs = 60000 }) {
         clearTimeout(timer);
         const ok = res.statusCode >= 200 && res.statusCode < 300;
         if (!ok) return reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 400)}`));
-        try {
-          resolve(JSON.parse(body));
-        } catch {
-          reject(new Error(`Bad JSON: ${body.slice(0, 300)}`));
-        }
+        try { resolve(JSON.parse(body)); }
+        catch { reject(new Error(`Bad JSON: ${body.slice(0, 300)}`)); }
       });
     });
 
@@ -82,8 +88,8 @@ function requestJSON({ method, url, payload, timeoutMs = 60000 }) {
   });
 }
 
-// Choose one you already have:
-const OLLAMA_MODEL = "mistral:latest"; // or "llama3:latest" or "gemma3:4b"
+// === OLLAMA ===
+const OLLAMA_MODEL = "gemma3:4b"; // ✅ your installed model
 const OLLAMA_CHAT_URL = "http://127.0.0.1:11434/api/chat";
 const OLLAMA_TAGS_URL = "http://127.0.0.1:11434/api/tags";
 
@@ -104,16 +110,10 @@ ipcMain.handle("ai:ask", async (event, history) => {
 
 ipcMain.handle("ai:health", async () => {
   try {
-    const data = await requestJSON({
-      method: "GET",
-      url: OLLAMA_TAGS_URL,
-      payload: null,
-      timeoutMs: 4000
-    });
-
+    const data = await requestJSON({ method: "GET", url: OLLAMA_TAGS_URL, payload: null, timeoutMs: 3000 });
     const modelNames = (data?.models || []).map(m => m.name);
-    const hasModel = modelNames.includes(OLLAMA_MODEL);
-    return { ok: true, model: OLLAMA_MODEL, hasModel, models: modelNames.slice(0, 20) };
+    const hasModel = modelNames.includes(OLLAMA_MODEL) || modelNames.includes(`${OLLAMA_MODEL}:latest`);
+    return { ok: true, model: OLLAMA_MODEL, hasModel };
   } catch (e) {
     return { ok: false, model: OLLAMA_MODEL, error: e.message || String(e) };
   }
