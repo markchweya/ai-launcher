@@ -1,17 +1,34 @@
 const path = require("path");
 const fs = require("fs");
-const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  screen,
+  Tray,
+  Menu,
+  nativeImage
+} = require("electron");
 
 let win = null;
+let tray = null;
 
 /* -----------------------------
    Cache / Chromium permissions
+   (fixes cache_util_win.cc access denied spam)
 ------------------------------ */
-// Put Chromium cache in Electron userData (writable location)
-app.setPath("cache", path.join(app.getPath("userData"), "Cache"));
-// Reduce cache permission noise on some systems
+const userCache = path.join(app.getPath("userData"), "Cache");
+app.setPath("cache", userCache);
+app.commandLine.appendSwitch("disk-cache-dir", userCache);
 app.commandLine.appendSwitch("disable-gpu-cache");
-app.commandLine.appendSwitch("disk-cache-dir", path.join(app.getPath("userData"), "Cache"));
+// optional: reduces some Windows occlusion behavior edge-cases
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+// optional: reduce autofill protocol noise
+app.commandLine.appendSwitch(
+  "disable-features",
+  "AutofillEnableAccountWalletStorage,AutofillServerCommunication"
+);
 
 /* -----------------------------
    Settings (stored locally)
@@ -23,9 +40,7 @@ function settingsPath() {
 function loadSettings() {
   try {
     const p = settingsPath();
-    if (!fs.existsSync(p)) {
-      return { provider: "ollama", openai_api_key: "" };
-    }
+    if (!fs.existsSync(p)) return { provider: "ollama", openai_api_key: "" };
     const raw = fs.readFileSync(p, "utf-8");
     const data = JSON.parse(raw);
     return {
@@ -45,8 +60,17 @@ function saveSettings(partial) {
 }
 
 /* -----------------------------
-   Window
+   Window helpers
 ------------------------------ */
+function toggleWindow() {
+  if (!win) return;
+  if (win.isVisible()) win.hide();
+  else {
+    win.show();
+    win.focus();
+  }
+}
+
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
@@ -75,9 +99,7 @@ function createWindow() {
   win.loadFile("index.html");
 
   win.on("show", () => {
-    if (win && win.webContents) {
-      win.webContents.send("app:shown");
-    }
+    if (win && win.webContents) win.webContents.send("app:shown");
   });
 
   win.on("maximize", () => {
@@ -88,38 +110,78 @@ function createWindow() {
     if (win && win.webContents) win.webContents.send("app:state", { maximized: false });
   });
 
+  // Prevent quitting when user closes window (we hide instead; tray opens it)
+  win.on("close", (e) => {
+    // If app is quitting, allow close
+    if (app.isQuiting) return;
+    e.preventDefault();
+    win.hide();
+  });
+
   win.on("closed", () => {
     win = null;
   });
 }
 
 /* -----------------------------
+   Tray (fallback to open/hide)
+------------------------------ */
+function createTray() {
+  // Try to load custom icon if you add one later:
+  // build/icon.ico
+  let icon = nativeImage.createEmpty();
+  const iconPath = path.join(__dirname, "build", "icon.ico");
+  if (fs.existsSync(iconPath)) {
+    icon = nativeImage.createFromPath(iconPath);
+  }
+
+  tray = new Tray(icon);
+  tray.setToolTip("AI Launcher");
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: "Show / Hide",
+      click: () => toggleWindow()
+    },
+    { type: "separator" },
+    {
+      label: "Quit",
+      click: () => {
+        app.isQuiting = true;
+        app.quit();
+      }
+    }
+  ]);
+
+  tray.setContextMenu(menu);
+
+  // Left click toggles too
+  tray.on("click", () => toggleWindow());
+}
+
+/* -----------------------------
    Global Shortcut
 ------------------------------ */
 function registerShortcuts() {
-  // Primary + fallback. Windows can block common combos.
- const primary = "Control+A+I";
-const fallback = "Control+Shift+I";
+  // You requested Ctrl + A + I (note: many apps intercept Ctrl+A)
+  const primary = "Control+A+I";
 
+  // Fallback so you never get locked out
+  const fallback = "Control+Shift+I";
 
-  const toggle = () => {
-    if (!win) return;
-    if (win.isVisible()) win.hide();
-    else {
-      win.show();
-      win.focus();
-    }
-  };
+  let ok = globalShortcut.register(primary, toggleWindow);
+  if (!ok) console.log("Shortcut failed:", primary);
 
-  let ok = globalShortcut.register(primary, toggle);
-  if (!ok) {
-    console.log("Shortcut failed:", primary);
-    ok = globalShortcut.register(fallback, toggle);
-    if (!ok) console.log("Shortcut failed:", fallback);
-  }
+  // Always register fallback as a backup
+  const ok2 = globalShortcut.register(fallback, toggleWindow);
+  if (!ok2) console.log("Shortcut failed:", fallback);
 
-  // Optional: expose what was used (for your own debugging)
-  console.log("Shortcut active:", ok ? (globalShortcut.isRegistered(primary) ? primary : fallback) : "none");
+  const active =
+    (globalShortcut.isRegistered(primary) ? primary : "") ||
+    (globalShortcut.isRegistered(fallback) ? fallback : "") ||
+    "none";
+
+  console.log("Shortcut active:", active);
 }
 
 /* -----------------------------
@@ -132,11 +194,7 @@ async function ollamaTags() {
 }
 
 async function ollamaChat(model, messages) {
-  const payload = {
-    model,
-    messages,
-    stream: false
-  };
+  const payload = { model, messages, stream: false };
 
   const r = await fetch("http://127.0.0.1:11434/api/chat", {
     method: "POST",
@@ -154,8 +212,6 @@ async function ollamaChat(model, messages) {
 }
 
 async function openaiChat(apiKey, messages) {
-  // Uses OpenAI Chat Completions endpoint (simple non-stream).
-  // Requires your API key in Settings.
   const payload = {
     model: "gpt-4o-mini",
     messages
@@ -229,19 +285,21 @@ function wireIPC() {
 
   ipcMain.handle("app:health", async () => {
     const s = loadSettings();
+
     if (s.provider === "openai") {
       const hasKey = !!(s.openai_api_key && s.openai_api_key.trim().length > 0);
       return { provider: "openai", ok: hasKey, model: "gpt-4o-mini" };
     }
 
-    // Ollama
     try {
       const tags = await ollamaTags();
-      const models = (tags.models || []).map(m => m.name);
-      // Prefer gemma3:4b if installed, else first model
-      let model = models.find(x => x.toLowerCase().startsWith("gemma3:4b")) || models[0] || "";
+      const models = (tags.models || []).map((m) => m.name);
+      const model =
+        models.find((x) => x.toLowerCase().startsWith("gemma3:4b")) ||
+        models[0] ||
+        "";
       return { provider: "ollama", ok: true, hasModel: !!model, model };
-    } catch (e) {
+    } catch {
       return { provider: "ollama", ok: false, hasModel: false, model: "" };
     }
   });
@@ -256,14 +314,13 @@ function wireIPC() {
       return await openaiChat(key, safeMessages);
     }
 
-    // Ollama
     const tags = await ollamaTags();
-    const models = (tags.models || []).map(m => m.name);
+    const models = (tags.models || []).map((m) => m.name);
+    const model =
+      models.find((x) => x.toLowerCase().startsWith("gemma3:4b")) ||
+      models[0];
 
-    // prefer gemma3:4b if available
-    const model = models.find(x => x.toLowerCase().startsWith("gemma3:4b")) || models[0];
     if (!model) throw new Error("No Ollama models found");
-
     return await ollamaChat(model, safeMessages);
   });
 }
@@ -273,6 +330,7 @@ function wireIPC() {
 ------------------------------ */
 app.whenReady().then(() => {
   createWindow();
+  createTray();
   wireIPC();
   registerShortcuts();
 });
@@ -281,8 +339,7 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
 });
 
+// Keep running in background with tray even if all windows are closed/hidden
 app.on("window-all-closed", () => {
-  // Keep background behavior typical on Windows: quit when all windows closed.
-  // If you want true background + tray later, we can add that.
-  app.quit();
+  // do nothing (tray keeps app alive)
 });
