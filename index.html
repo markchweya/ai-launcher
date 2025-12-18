@@ -7,15 +7,18 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app">
-    <div class="topbar">
+  <div class="app" id="app">
+    <!-- Top bar (drag here) -->
+    <div class="topbar" id="dragBar">
       <div class="brand">
         <div class="brandTitle">AI Assistant</div>
-        <div class="brandSub" id="statusText">Checking local model…</div>
+        <div class="brandSub" id="statusText">Checking model…</div>
       </div>
 
       <div class="topActions">
         <button class="iconBtn" id="themeBtn" title="Toggle theme">☾</button>
+        <button class="iconBtn" id="minBtn" title="Minimize">—</button>
+        <button class="iconBtn" id="maxBtn" title="Maximize / Restore">▢</button>
         <button class="iconBtn" id="closeBtn" title="Hide">✕</button>
       </div>
     </div>
@@ -26,19 +29,28 @@
 
     <div class="composer">
       <input type="file" id="fileInput" hidden multiple accept=".txt,.md,.json" />
-
-      <button class="pillBtn" id="uploadBtn" title="Upload a file">＋</button>
+      <button class="pillBtn" id="uploadBtn" title="Upload">＋</button>
 
       <textarea
         id="input"
         rows="1"
-        placeholder="Ask anything… (Enter to send, Shift+Enter new line)"
+        placeholder="Ask anything… (Enter send • Shift+Enter new line)"
       ></textarea>
 
       <button class="sendBtn" id="sendBtn">Send</button>
     </div>
 
-    <div class="footerHint" id="hint"></div>
+    <div class="footerHint" id="hint">Shortcut: Ctrl + A + I • Alt-drag anywhere to move</div>
+
+    <!-- Custom resize handles -->
+    <div class="rh r-n"></div>
+    <div class="rh r-s"></div>
+    <div class="rh r-e"></div>
+    <div class="rh r-w"></div>
+    <div class="rh r-ne"></div>
+    <div class="rh r-nw"></div>
+    <div class="rh r-se"></div>
+    <div class="rh r-sw"></div>
   </div>
 
   <script src="renderer.js"></script>
