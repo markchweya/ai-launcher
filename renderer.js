@@ -1,11 +1,14 @@
+const appEl = document.getElementById("app");
 const messagesDiv = document.getElementById("messages");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("sendBtn");
-const closeBtn = document.getElementById("closeBtn");
-const themeBtn = document.getElementById("themeBtn");
 const toast = document.getElementById("toast");
 const statusText = document.getElementById("statusText");
-const hint = document.getElementById("hint");
+
+const themeBtn = document.getElementById("themeBtn");
+const closeBtn = document.getElementById("closeBtn");
+const minBtn = document.getElementById("minBtn");
+const maxBtn = document.getElementById("maxBtn");
 
 const uploadBtn = document.getElementById("uploadBtn");
 const fileInput = document.getElementById("fileInput");
@@ -21,13 +24,14 @@ let chatHistory = [
   {
     role: "system",
     content:
-      "You are a helpful desktop assistant. Be friendly, modern, and practical. Keep answers tight. If the user uploads files, use them as reference."
+      "You are a helpful desktop assistant. Be friendly, modern, and practical. Keep answers tight. Use uploaded files as reference when relevant."
   }
 ];
 
 let busy = false;
 let queue = [];
 
+/* ---------- UI helpers ---------- */
 function showToast(msg, ms = 1400) {
   toast.textContent = msg;
   toast.classList.add("show");
@@ -48,7 +52,7 @@ function toggleTheme() {
 
 function autoGrow() {
   input.style.height = "0px";
-  input.style.height = Math.min(input.scrollHeight, 140) + "px";
+  input.style.height = Math.min(input.scrollHeight, 160) + "px";
 }
 
 function escapeHtml(s) {
@@ -60,42 +64,29 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
-// super-light “markdown-ish” renderer: code fences only
 function renderMessage(text) {
   const t = String(text || "");
   if (!t.includes("```")) return `<div>${escapeHtml(t).replaceAll("\n", "<br/>")}</div>`;
-
-  // split by fences
   const parts = t.split("```");
   let html = "";
   for (let i = 0; i < parts.length; i++) {
-    if (i % 2 === 0) {
-      html += `<div>${escapeHtml(parts[i]).replaceAll("\n", "<br/>")}</div>`;
-    } else {
-      const codeBlock = parts[i];
-      // allow optional language on first line
-      const lines = codeBlock.split("\n");
-      const maybeLang = lines[0].trim();
-      const code = lines.slice(1).join("\n");
-      const hasLang = maybeLang.length < 18 && !maybeLang.includes(" ") && code.length > 0;
-      const finalCode = hasLang ? code : codeBlock;
-      html += `<pre><code>${escapeHtml(finalCode)}</code></pre>`;
-    }
+    if (i % 2 === 0) html += `<div>${escapeHtml(parts[i]).replaceAll("\n", "<br/>")}</div>`;
+    else html += `<pre><code>${escapeHtml(parts[i])}</code></pre>`;
   }
   return html;
 }
 
-function addBubble(who, text, cls) {
+function addBubble(text, cls) {
   const div = document.createElement("div");
   div.className = `msg ${cls}`;
-  div.innerHTML = `<div class="meta">${who}</div>${renderMessage(text)}`;
+  div.innerHTML = renderMessage(text);
   messagesDiv.appendChild(div);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
   return div;
 }
 
 function greet() {
-  addBubble("AI", greetings[Math.floor(Math.random() * greetings.length)], "ai");
+  addBubble(greetings[Math.floor(Math.random() * greetings.length)], "ai");
 }
 
 async function refreshHealth() {
@@ -120,18 +111,17 @@ async function sendMessage(text) {
   }
 
   busy = true;
-
-  addBubble("You", msg, "you");
+  addBubble(msg, "you");
   chatHistory.push({ role: "user", content: msg });
 
-  const typing = addBubble("AI", "…", "ai");
+  const typing = addBubble("…", "ai");
 
   try {
     const reply = await window.api.ask(chatHistory);
-    typing.innerHTML = `<div class="meta">AI</div>${renderMessage(reply)}`;
+    typing.innerHTML = renderMessage(reply);
     chatHistory.push({ role: "assistant", content: reply });
   } catch (e) {
-    typing.innerHTML = `<div class="meta">AI</div>${renderMessage("Error: " + (e.message || e))}`;
+    typing.innerHTML = renderMessage("Error: " + (e.message || e));
     showToast("AI error (check Ollama)");
   } finally {
     busy = false;
@@ -140,49 +130,13 @@ async function sendMessage(text) {
   }
 }
 
-/* File upload (simple: inject into context) */
-uploadBtn.addEventListener("click", () => fileInput.click());
-
-fileInput.addEventListener("change", async () => {
-  const files = Array.from(fileInput.files || []);
-  if (!files.length) return;
-
-  for (const f of files) {
-    const text = await readFileAsText(f);
-    const clipped = clip(text, 18000); // keep it safe for local model context
-
-    showToast(`Loaded: ${f.name}`);
-    addBubble("System", `Loaded file: ${f.name}`, "ai");
-
-    chatHistory.push({
-      role: "system",
-      content:
-        `User uploaded file "${f.name}". Content (may be truncated):\n` +
-        `---BEGIN FILE---\n${clipped}\n---END FILE---`
-    });
-  }
-
-  fileInput.value = "";
-});
-
-function readFileAsText(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read file."));
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.readAsText(file);
-  });
-}
-
-function clip(s, max) {
-  const str = String(s || "");
-  return str.length > max ? str.slice(0, max) + "\n\n[TRUNCATED]" : str;
-}
-
-/* UI wiring */
+/* ---------- Window controls ---------- */
 closeBtn.addEventListener("click", async () => window.api.hide());
+minBtn.addEventListener("click", async () => window.api.minimize());
+maxBtn.addEventListener("click", async () => window.api.toggleMaximize());
 themeBtn.addEventListener("click", toggleTheme);
 
+/* ---------- Composer ---------- */
 sendBtn.addEventListener("click", () => {
   const t = input.value;
   input.value = "";
@@ -202,11 +156,130 @@ input.addEventListener("keydown", (e) => {
   }
 });
 
-/* boot */
-setTheme(localStorage.getItem("theme") || "dark");
-hint.textContent = "Shortcut: tries A+I first, otherwise Alt+I";
-greet();
-refreshHealth();
-setInterval(refreshHealth, 7000);
-autoGrow();
-input.focus();
+/* ---------- Upload files (simple inject) ---------- */
+uploadBtn.addEventListener("click", () => fileInput.click());
+
+fileInput.addEventListener("change", async () => {
+  const files = Array.from(fileInput.files || []);
+  if (!files.length) return;
+
+  for (const f of files) {
+    const text = await readFileAsText(f);
+    const clipped = clip(text, 18000);
+    showToast(`Loaded: ${f.name}`);
+
+    chatHistory.push({
+      role: "system",
+      content:
+        `User uploaded file "${f.name}". Content (may be truncated):\n` +
+        `---BEGIN FILE---\n${clipped}\n---END FILE---`
+    });
+
+    addBubble(`✅ Loaded file: ${f.name}`, "ai");
+  }
+
+  fileInput.value = "";
+});
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read file."));
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.readAsText(file);
+  });
+}
+
+function clip(s, max) {
+  const str = String(s || "");
+  return str.length > max ? str.slice(0, max) + "\n\n[TRUNCATED]" : str;
+}
+
+/* ---------- Alt-drag anywhere to move ---------- */
+let moveMode = null;
+
+window.addEventListener("mousedown", async (e) => {
+  // hold ALT and drag anywhere (except textarea / buttons)
+  const t = e.target;
+  const isInteractive =
+    t.closest("textarea") || t.closest("button") || t.closest("input") || t.closest("a");
+
+  if (!e.altKey || isInteractive) return;
+
+  const b = await window.api.getBounds();
+  if (!b) return;
+
+  moveMode = {
+    startX: e.screenX,
+    startY: e.screenY,
+    startBounds: b
+  };
+});
+
+window.addEventListener("mousemove", async (e) => {
+  if (!moveMode) return;
+  const dx = e.screenX - moveMode.startX;
+  const dy = e.screenY - moveMode.startY;
+
+  await window.api.setBounds({
+    x: moveMode.startBounds.x + dx,
+    y: moveMode.startBounds.y + dy,
+    width: moveMode.startBounds.width,
+    height: moveMode.startBounds.height
+  });
+});
+
+window.addEventListener("mouseup", () => {
+  moveMode = null;
+});
+
+/* ---------- Custom resize handles ---------- */
+let resizeMode = null;
+
+function startResize(dir, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  window.api.getBounds().then((b) => {
+    if (!b) return;
+    resizeMode = {
+      dir,
+      startX: e.screenX,
+      startY: e.screenY,
+      startBounds: b
+    };
+  });
+}
+
+function doResize(e) {
+  if (!resizeMode) return;
+  const { dir, startX, startY, startBounds } = resizeMode;
+  const dx = e.screenX - startX;
+  const dy = e.screenY - startY;
+
+  let { x, y, width, height } = startBounds;
+
+  const minW = 360;
+  const minH = 420;
+
+  if (dir.includes("e")) width = Math.max(minW, width + dx);
+  if (dir.includes("s")) height = Math.max(minH, height + dy);
+
+  if (dir.includes("w")) {
+    const newW = Math.max(minW, width - dx);
+    x = x + (width - newW);
+    width = newW;
+  }
+
+  if (dir.includes("n")) {
+    const newH = Math.max(minH, height - dy);
+    y = y + (height - newH);
+    height = newH;
+  }
+
+  window.api.setBounds({ x, y, width, height });
+}
+
+function endResize() { resizeMode = null; }
+
+document.querySelector(".r-n").addEventListener("mousedown", (e) => startResize("n", e));
+document.querySelector(".r-s").addEventListener("mousedown", (e) => star
