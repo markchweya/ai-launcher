@@ -6,26 +6,25 @@ const toast = document.getElementById("toast");
 const statusText = document.getElementById("statusText");
 
 const themeBtn = document.getElementById("themeBtn");
-const themeIcon = document.getElementById("themeIcon");
 const closeBtn = document.getElementById("closeBtn");
 const minBtn = document.getElementById("minBtn");
 const maxBtn = document.getElementById("maxBtn");
 
+const settingsBtn = document.getElementById("settingsBtn");
+const settingsPanel = document.getElementById("settingsPanel");
+const settingsCloseBtn = document.getElementById("settingsCloseBtn");
+const providerSelect = document.getElementById("providerSelect");
+const apiKeyInput = document.getElementById("apiKeyInput");
+const saveKeyBtn = document.getElementById("saveKeyBtn");
+const keyStatus = document.getElementById("keyStatus");
+
 const uploadBtn = document.getElementById("uploadBtn");
 const fileInput = document.getElementById("fileInput");
-
-const greetings = [
-  "👋 I’m awake. Give me a mission.",
-  "⚡ Local AI ready. What are we building?",
-  "🔥 Drop a task — I’ll help you ship it.",
-  "🧠 Ask me anything. Let’s move fast."
-];
 
 let chatHistory = [
   {
     role: "system",
-    content:
-      "You are a helpful desktop assistant. Be friendly, modern, and practical. Keep answers tight. Use uploaded files as reference when relevant."
+    content: "You are a helpful desktop assistant. Be friendly, modern, and practical. Keep answers tight."
   }
 ];
 
@@ -43,7 +42,6 @@ function showToast(msg, ms = 1400) {
 function setTheme(theme) {
   document.body.setAttribute("data-theme", theme);
   localStorage.setItem("theme", theme);
-  themeIcon.textContent = theme === "dark" ? "☾" : "☀";
 }
 
 function toggleTheme() {
@@ -87,20 +85,84 @@ function addBubble(text, cls) {
 }
 
 function greet() {
-  addBubble(greetings[Math.floor(Math.random() * greetings.length)], "ai");
+  addBubble("Hey, how are you doing?", "ai");
 }
 
+/* ---------- Settings panel ---------- */
+function openSettings() {
+  settingsPanel.classList.add("open");
+  settingsPanel.setAttribute("aria-hidden", "false");
+}
+function closeSettings() {
+  settingsPanel.classList.remove("open");
+  settingsPanel.setAttribute("aria-hidden", "true");
+}
+
+settingsBtn.addEventListener("click", () => {
+  if (settingsPanel.classList.contains("open")) closeSettings();
+  else openSettings();
+});
+settingsCloseBtn.addEventListener("click", closeSettings);
+
+// Close settings if you click outside it
+document.addEventListener("mousedown", (e) => {
+  if (!settingsPanel.classList.contains("open")) return;
+  const inside = settingsPanel.contains(e.target) || settingsBtn.contains(e.target);
+  if (!inside) closeSettings();
+});
+
+async function loadSettingsUI() {
+  const s = await window.api.settingsGet();
+  providerSelect.value = s.provider || "ollama";
+  keyStatus.textContent = s.openaiKeySet ? "Key: set" : "Key: not set";
+}
+
+providerSelect.addEventListener("change", async () => {
+  const p = providerSelect.value;
+  await window.api.settingsSetProvider(p);
+  showToast("Provider updated");
+  await refreshHealth();
+});
+
+saveKeyBtn.addEventListener("click", async () => {
+  const k = apiKeyInput.value.trim();
+  if (!k) {
+    showToast("Paste your key first");
+    return;
+  }
+  const r = await window.api.settingsSetOpenAIKey(k);
+  if (!r.ok) {
+    showToast(r.error || "Could not save key");
+    return;
+  }
+  apiKeyInput.value = "";
+  showToast("Key saved");
+  await loadSettingsUI();
+  await refreshHealth();
+});
+
+/* ---------- Health / status ---------- */
 async function refreshHealth() {
   const h = await window.api.health();
+
+  if (h.provider === "openai") {
+    statusText.textContent = h.ok
+      ? `Provider: OpenAI (key set) • Model: ${h.model}`
+      : `Provider: OpenAI (key missing) • Model: ${h.model}`;
+    return;
+  }
+
+  // Ollama
   if (h.ok) {
     statusText.textContent = h.hasModel
-      ? `Local model • Connected • ${h.model}`
-      : `Local model • Connected • ${h.model} (not found)`;
+      ? `Provider: Local (Ollama) • Connected • ${h.model}`
+      : `Provider: Local (Ollama) • Connected • ${h.model} not found`;
   } else {
-    statusText.textContent = `Local model • Not reachable • ${h.model}`;
+    statusText.textContent = `Provider: Local (Ollama) • Not reachable`;
   }
 }
 
+/* ---------- Chat send ---------- */
 async function sendMessage(text) {
   const msg = text.trim();
   if (!msg) return;
@@ -115,7 +177,7 @@ async function sendMessage(text) {
   addBubble(msg, "you");
   chatHistory.push({ role: "user", content: msg });
 
-  const typing = addBubble("…", "ai");
+  const typing = addBubble("...", "ai");
 
   try {
     const reply = await window.api.ask(chatHistory);
@@ -123,7 +185,7 @@ async function sendMessage(text) {
     chatHistory.push({ role: "assistant", content: reply });
   } catch (e) {
     typing.innerHTML = renderMessage("Error: " + (e.message || e));
-    showToast("AI error (check Ollama)");
+    showToast("AI error");
   } finally {
     busy = false;
     if (queue.length) setTimeout(() => sendMessage(queue.shift()), 120);
@@ -137,7 +199,6 @@ minBtn.addEventListener("click", async () => window.api.minimize());
 maxBtn.addEventListener("click", async () => window.api.toggleMaximize());
 themeBtn.addEventListener("click", toggleTheme);
 
-/* Keep UI in sync with maximize state */
 async function syncMaxState() {
   const isMax = await window.api.isMaximized();
   appEl.classList.toggle("maxed", !!isMax);
@@ -177,8 +238,8 @@ fileInput.addEventListener("change", async () => {
   for (const f of files) {
     const text = await readFileAsText(f);
     const clipped = clip(text, 18000);
-    showToast(`Loaded: ${f.name}`);
-    addBubble(`✅ Loaded: ${f.name}`, "ai");
+
+    addBubble(`Loaded file: ${f.name}`, "ai");
 
     chatHistory.push({
       role: "system",
@@ -215,8 +276,9 @@ window.api.onShown(() => playEntrance());
 /* ---------- Boot ---------- */
 setTheme(localStorage.getItem("theme") || "dark");
 greet();
+loadSettingsUI();
 refreshHealth();
-setInterval(refreshHealth, 7000);
+setInterval(refreshHealth, 8000);
 autoGrow();
 input.focus();
 playEntrance();

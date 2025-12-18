@@ -18,7 +18,17 @@
 
       <div class="rightActions">
         <button class="iconBtn" id="settingsBtn" title="Settings">Settings</button>
-        <button class="iconBtn" id="themeBtn" title="Theme">Theme</button>
+
+        <!-- Icon theme button (moon/sun) -->
+        <button class="iconIconBtn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">
+          <svg id="themeIconMoon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 14.5A8.5 8.5 0 0 1 9.5 3a6.5 6.5 0 1 0 11.5 11.5Z"></path>
+          </svg>
+          <svg id="themeIconSun" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 18a6 6 0 1 1 0-12 6 6 0 0 1 0 12Z"></path>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+          </svg>
+        </button>
 
         <div class="divider"></div>
 
@@ -38,7 +48,6 @@
 
     <div class="toast" id="toast"></div>
 
-    <!-- Settings bar / panel -->
     <div class="settingsPanel" id="settingsPanel" aria-hidden="true">
       <div class="settingsHeader">
         <div class="settingsTitle">Settings</div>
@@ -87,7 +96,6 @@
       <div class="disclaimer">AI can make mistakes. Check important info.</div>
     </div>
 
-    <!-- Custom resize handles -->
     <div class="rh r-n"></div>
     <div class="rh r-s"></div>
     <div class="rh r-e"></div>
