@@ -10,32 +10,26 @@
   <div class="app" id="app">
     <div class="topbar" id="dragBar">
       <div class="leftBrand">
-        <div class="badge"></div>
         <div class="brandText">
           <div class="brandTitle">AI Assistant</div>
-          <div class="brandSub" id="statusText">Checking model…</div>
+          <div class="brandSub" id="statusText">Checking…</div>
         </div>
       </div>
 
       <div class="rightActions">
-        <button class="iconBtn" id="themeBtn" title="Toggle theme">
-          <!-- moon/sun will be injected -->
-          <span id="themeIcon">☾</span>
-        </button>
+        <button class="iconBtn" id="settingsBtn" title="Settings">Settings</button>
+        <button class="iconBtn" id="themeBtn" title="Theme">Theme</button>
 
         <div class="divider"></div>
 
         <div class="winControls">
           <button class="wcBtn" id="minBtn" title="Minimize">
-            <!-- minus -->
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg>
           </button>
           <button class="wcBtn" id="maxBtn" title="Maximize / Restore">
-            <!-- square -->
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z"/></svg>
           </button>
           <button class="wcBtn danger" id="closeBtn" title="Hide">
-            <!-- x -->
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
           </button>
         </div>
@@ -44,25 +38,53 @@
 
     <div class="toast" id="toast"></div>
 
-    <!-- Centered content like ChatGPT when maximized -->
+    <!-- Settings bar / panel -->
+    <div class="settingsPanel" id="settingsPanel" aria-hidden="true">
+      <div class="settingsHeader">
+        <div class="settingsTitle">Settings</div>
+        <button class="iconBtn small" id="settingsCloseBtn">Close</button>
+      </div>
+
+      <div class="settingsRow">
+        <label class="label">Provider</label>
+        <select id="providerSelect" class="select">
+          <option value="ollama">Local (Ollama)</option>
+          <option value="openai">OpenAI</option>
+        </select>
+      </div>
+
+      <div class="settingsRow">
+        <label class="label">OpenAI API Key</label>
+        <input id="apiKeyInput" class="input" type="password" placeholder="Paste your key here" />
+      </div>
+
+      <div class="settingsRow actions">
+        <button class="primaryBtn" id="saveKeyBtn">Save key</button>
+        <div class="muted" id="keyStatus">Key: not set</div>
+      </div>
+
+      <div class="settingsHint">
+        Your key is saved locally on this PC (userData/settings.json). You can also set OPENAI_API_KEY as an environment variable.
+      </div>
+    </div>
+
     <div class="content">
       <div class="messages" id="messages"></div>
 
       <div class="composer">
         <input type="file" id="fileInput" hidden multiple accept=".txt,.md,.json" />
-        <button class="pillBtn" id="uploadBtn" title="Upload">＋</button>
+        <button class="pillBtn" id="uploadBtn" title="Upload">+</button>
 
         <textarea
           id="input"
           rows="1"
-          placeholder="Ask anything… (Enter send • Shift+Enter new line)"
+          placeholder="Ask anything..."
         ></textarea>
 
         <button class="sendBtn" id="sendBtn">Send</button>
       </div>
 
       <div class="disclaimer">AI can make mistakes. Check important info.</div>
-      <div class="footerHint" id="hint">Shortcut: Ctrl + A + I • Alt-drag anywhere to move</div>
     </div>
 
     <!-- Custom resize handles -->
