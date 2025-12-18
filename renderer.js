@@ -3,11 +3,13 @@ const messagesDiv = document.getElementById("messages");
 const closeBtn = document.getElementById("closeBtn");
 
 const greetings = [
-  "Hey 👋 I’m your desktop AI. What are we building today?",
-  "Yo 😄 What’s up? Drop a task and I’ll jump on it.",
-  "Hey! ⚡ Ready when you are — what do you need help with?",
-  "Sup 🔥 Ask me anything. I’m floating and focused."
+  "Sup 🔥 Ask me anything. I’m floating and focused.",
+  "⚡ I’m your offline desktop AI. What should we tackle?",
+  "👋 Hey! Drop a task — code, writing, anything.",
+  "🧠 Ready. What do you need help with?"
 ];
+
+let busy = false;
 
 let chatHistory = [
   {
@@ -23,6 +25,7 @@ function addBubble(text, cls) {
   div.textContent = text;
   messagesDiv.appendChild(div);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  return div;
 }
 
 function greet() {
@@ -31,31 +34,38 @@ function greet() {
 }
 
 closeBtn.addEventListener("click", async () => {
-  // we’ll make this hide the window (not kill the app)
   await window.api.hide();
 });
 
 input.addEventListener("keydown", async (e) => {
-  if (e.key === "Enter" && input.value.trim()) {
-    const userText = input.value.trim();
-    input.value = "";
+  if (e.key !== "Enter") return;
 
-    addBubble(`You: ${userText}`, "you");
-    chatHistory.push({ role: "user", content: userText });
+  const userText = input.value.trim();
+  if (!userText) return;
 
-    // Show a small "typing" indicator
-    addBubble("AI: …", "ai");
-    const typingNode = messagesDiv.lastChild;
+  if (busy) {
+    addBubble("AI: One sec — I’m still answering the last message 🙂", "ai");
+    return;
+  }
 
-    try {
-      const reply = await window.api.ask(chatHistory);
-      typingNode.textContent = `AI: ${reply}`;
-      chatHistory.push({ role: "assistant", content: reply });
-    } catch (err) {
-      typingNode.textContent = `AI: Sorry — error: ${err.message || err}`;
-    }
+  busy = true;
+  input.value = "";
+
+  addBubble(`You: ${userText}`, "you");
+  chatHistory.push({ role: "user", content: userText });
+
+  const typingNode = addBubble("AI: …", "ai");
+
+  try {
+    const reply = await window.api.ask(chatHistory);
+    typingNode.textContent = `AI: ${reply}`;
+    chatHistory.push({ role: "assistant", content: reply });
+  } catch (err) {
+    typingNode.textContent = `AI: Error — ${err.message || err}`;
+  } finally {
+    busy = false;
+    input.focus();
   }
 });
 
-// start greeting immediately
 greet();

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, screen, ipcMain } = require("electron");
+const { app, BrowserWindow, globalShortcut, screen, ipcMain, net } = require("electron");
 const path = require("path");
 
 let win;
@@ -13,7 +13,7 @@ function createWindow() {
     y: height - 580,
     frame: false,
     alwaysOnTop: true,
-    show: true, // show at start so you see the greeting
+    show: true,
     resizable: false,
     transparent: true,
     webPreferences: {
@@ -42,37 +42,67 @@ app.whenReady().then(() => {
 
 app.on("will-quit", () => globalShortcut.unregisterAll());
 
-// Hide (don’t quit)
 ipcMain.handle("win:hide", async () => {
   if (win) win.hide();
   return true;
 });
 
-// === AI provider: OLLAMA (offline) ===
-// Requires Ollama running locally: http://127.0.0.1:11434
+function postJSON(url, payload, timeoutMs = 60000) {
+  return new Promise((resolve, reject) => {
+    const request = net.request({
+      method: "POST",
+      url
+    });
+
+    request.setHeader("Content-Type", "application/json");
+
+    const timer = setTimeout(() => {
+      try { request.abort(); } catch {}
+      reject(new Error("Ollama request timed out. Try a lighter model or check Ollama is responsive."));
+    }, timeoutMs);
+
+    request.on("response", (response) => {
+      let body = "";
+      response.on("data", (chunk) => (body += chunk.toString("utf8")));
+      response.on("end", () => {
+        clearTimeout(timer);
+        if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+          try {
+            resolve(JSON.parse(body));
+          } catch (e) {
+            reject(new Error("Failed to parse Ollama JSON response: " + body.slice(0, 300)));
+          }
+        } else {
+          reject(new Error(`Ollama error (${response.statusCode}): ${body.slice(0, 500)}`));
+        }
+      });
+    });
+
+    request.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    request.write(JSON.stringify(payload));
+    request.end();
+  });
+}
+
 async function askOllama(history) {
-  const model = "llama3.2:3b"; // fast on many laptops; you can change to 7b if your PC can handle
+ const model = "gemma3:4b";
+ // you have this installed
   const url = "http://127.0.0.1:11434/api/chat";
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      messages: history,
-      stream: false
-    })
+  const data = await postJSON(url, {
+    model,
+    messages: history,
+    stream: false
   });
 
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Ollama error (${res.status}): ${txt}`);
-  }
-
-  const data = await res.json();
-  return data?.message?.content?.trim() || "I didn’t get a response.";
+  return data?.message?.content?.trim() || "I didn’t get a response from the model.";
 }
 
 ipcMain.handle("ai:ask", async (event, history) => {
+  console.log("AI ask:", { messages: history?.length });
   return await askOllama(history);
 });
