@@ -1,11 +1,9 @@
-
 {
   "name": "ai-launcher",
-
   "version": "1.0.0",
   "main": "main.js",
   "description": "A lightweight system-wide launcher with a floating chat UI and pluggable AI providers.",
-"author": "Mark Chweya" ,
+  "author": "Mark Chweya",
   "scripts": {
     "start": "npx electron .",
     "pack": "electron-builder --dir",
@@ -16,20 +14,23 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.yourname.ailauncher",
+    "appId": "com.markchweya.ailauncher",
     "productName": "AI Launcher",
+    "directories": {
+      "output": "dist"
+    },
     "files": [
       "**/*"
     ],
     "win": {
-      "target": [
-        "nsis"
-      ]
+      "target": ["nsis"],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false
-    }
+    },
+    "publish": null
   }
 }
