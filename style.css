@@ -37,6 +37,7 @@ body[data-theme="light"]{
 }
 
 *{ box-sizing:border-box; }
+
 body{
   margin:0;
   background:transparent;
@@ -44,6 +45,7 @@ body{
   color: var(--text);
 }
 
+/* App */
 .app{
   height:100vh;
   border-radius: 20px;
@@ -87,16 +89,36 @@ body{
   -webkit-app-region: drag;
 }
 
+.leftBrand{
+  display:flex;
+  align-items:center;
+  min-width: 0;
+}
+
+.brandText{
+  display:flex;
+  flex-direction:column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .brandTitle{
   font-weight: 800;
   letter-spacing: 0.2px;
   font-size: 15px;
   line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
 .brandSub{
   font-size: 12px;
-  margin-top: 2px;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
 }
 
 .rightActions{
@@ -113,6 +135,7 @@ body{
   border-radius: 999px;
 }
 
+/* Buttons */
 .iconBtn{
   border: 1px solid var(--stroke);
   background: var(--btn);
@@ -126,7 +149,49 @@ body{
 .iconBtn:active{ transform: scale(0.99); }
 .iconBtn.small{ padding: 7px 10px; border-radius: 12px; font-weight: 650; }
 
+/* Theme icon button */
+.iconIconBtn{
+  width: 44px;
+  height: 38px;
+  border-radius: 14px;
+  border: 1px solid var(--stroke);
+  background: var(--btn);
+  cursor:pointer;
+  display:grid;
+  place-items:center;
+  padding: 0;
+  position: relative;
+}
+.iconIconBtn:hover{ background: var(--btnHover); }
+.iconIconBtn:active{ transform: scale(0.99); }
+
+.iconIconBtn svg{
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.92;
+  position:absolute;
+}
+
+#themeIconMoon{
+  fill: var(--text);
+  stroke: none;
+}
+#themeIconSun{
+  fill: none;
+}
+
+/* default hidden (renderer controls this) */
+#themeIconMoon{ display:none; }
+#themeIconSun{ display:none; }
+
+/* Window controls */
 .winControls{ display:flex; gap:8px; }
+
 .wcBtn{
   width: 34px;
   height: 34px;
@@ -240,6 +305,7 @@ body{
   padding: 10px 12px;
   outline:none;
 }
+
 .primaryBtn{
   border: 1px solid var(--stroke);
   background: rgba(0,170,255,0.18);
@@ -252,6 +318,7 @@ body{
 .primaryBtn:hover{ filter: brightness(1.06); }
 
 .muted{ color: var(--muted); font-size: 12px; }
+
 .settingsHint{
   margin-top: 10px;
   font-size: 11px;
@@ -308,7 +375,10 @@ pre{
   overflow:auto;
 }
 body[data-theme="light"] pre{ background: rgba(0,0,0,0.06); }
-code{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 13px; }
+code{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+}
 
 .composer{
   width: 100%;
@@ -369,7 +439,10 @@ code{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liber
 /* Scrollbars */
 .messages::-webkit-scrollbar,
 #input::-webkit-scrollbar,
-pre::-webkit-scrollbar{ width: 10px; height: 10px; }
+pre::-webkit-scrollbar{
+  width: 10px;
+  height: 10px;
+}
 
 .messages::-webkit-scrollbar-thumb,
 #input::-webkit-scrollbar-thumb,
@@ -379,6 +452,7 @@ pre::-webkit-scrollbar-thumb{
   border: 2px solid transparent;
   background-clip: content-box;
 }
+
 .messages::-webkit-scrollbar-thumb:hover,
 #input::-webkit-scrollbar-thumb:hover,
 pre::-webkit-scrollbar-thumb:hover{
@@ -386,9 +460,12 @@ pre::-webkit-scrollbar-thumb:hover{
   border: 2px solid transparent;
   background-clip: content-box;
 }
+
 .messages::-webkit-scrollbar-track,
 #input::-webkit-scrollbar-track,
-pre::-webkit-scrollbar-track{ background: transparent; }
+pre::-webkit-scrollbar-track{
+  background: transparent;
+}
 
 /* Resize handles */
 .rh{ position:absolute; z-index: 50; }
