@@ -282,4 +282,32 @@ function doResize(e) {
 function endResize() { resizeMode = null; }
 
 document.querySelector(".r-n").addEventListener("mousedown", (e) => startResize("n", e));
-document.querySelector(".r-s").addEventListener("mousedown", (e) => star
+document.querySelector(".r-s").addEventListener("mousedown", (e) => startResize("s", e));
+document.querySelector(".r-e").addEventListener("mousedown", (e) => startResize("e", e));
+document.querySelector(".r-w").addEventListener("mousedown", (e) => startResize("w", e));
+document.querySelector(".r-ne").addEventListener("mousedown", (e) => startResize("ne", e));
+document.querySelector(".r-nw").addEventListener("mousedown", (e) => startResize("nw", e));
+document.querySelector(".r-se").addEventListener("mousedown", (e) => startResize("se", e));
+document.querySelector(".r-sw").addEventListener("mousedown", (e) => startResize("sw", e));
+
+window.addEventListener("mousemove", doResize);
+window.addEventListener("mouseup", endResize);
+
+/* ---------- Entrance animation trigger ---------- */
+function playEntrance() {
+  appEl.classList.remove("enter");
+  // force reflow so animation re-triggers
+  void appEl.offsetWidth;
+  appEl.classList.add("enter");
+}
+
+window.api.onShown(() => playEntrance());
+
+/* ---------- Boot ---------- */
+setTheme(localStorage.getItem("theme") || "dark");
+greet();
+refreshHealth();
+setInterval(refreshHealth, 7000);
+autoGrow();
+input.focus();
+playEntrance();
