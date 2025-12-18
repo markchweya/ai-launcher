@@ -3,18 +3,36 @@
 <head>
   <meta charset="UTF-8" />
   <title>AI Assistant</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="chat">
-    <div class="header">
-      <span>AI Assistant</span>
-      <button id="closeBtn" title="Close">✕</button>
+  <div class="app" id="app">
+    <div class="topbar">
+      <div class="title">
+        <div class="dot" id="statusDot"></div>
+        <div>
+          <div class="name">AI Assistant</div>
+          <div class="sub" id="statusText">Checking Ollama…</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="iconbtn" id="themeBtn" title="Toggle theme">☾</button>
+        <button class="iconbtn" id="closeBtn" title="Hide">✕</button>
+      </div>
     </div>
 
-    <div id="messages"></div>
+    <div class="toast" id="toast"></div>
 
-    <input id="input" placeholder="Ask anything..." autocomplete="off" autofocus />
+    <div class="messages" id="messages"></div>
+
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="Ask anything… (Enter to send, Shift+Enter for new line)"></textarea>
+      <button id="sendBtn">Send</button>
+    </div>
+
+    <div class="hint">Tip: Ctrl + Shift + A + I to show/hide</div>
   </div>
 
   <script src="renderer.js"></script>
