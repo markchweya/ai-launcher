@@ -6,6 +6,7 @@ const toast = document.getElementById("toast");
 const statusText = document.getElementById("statusText");
 
 const themeBtn = document.getElementById("themeBtn");
+const themeIcon = document.getElementById("themeIcon");
 const closeBtn = document.getElementById("closeBtn");
 const minBtn = document.getElementById("minBtn");
 const maxBtn = document.getElementById("maxBtn");
@@ -14,10 +15,10 @@ const uploadBtn = document.getElementById("uploadBtn");
 const fileInput = document.getElementById("fileInput");
 
 const greetings = [
-  "👋 Hey. Drop a task — I’ll help you ship it.",
-  "⚡ Local AI is ready. What are we building today?",
-  "🔥 What’s the move? Code, writing, planning — I’m on it.",
-  "🧠 I’m awake. Give me a mission."
+  "👋 I’m awake. Give me a mission.",
+  "⚡ Local AI ready. What are we building?",
+  "🔥 Drop a task — I’ll help you ship it.",
+  "🧠 Ask me anything. Let’s move fast."
 ];
 
 let chatHistory = [
@@ -42,7 +43,7 @@ function showToast(msg, ms = 1400) {
 function setTheme(theme) {
   document.body.setAttribute("data-theme", theme);
   localStorage.setItem("theme", theme);
-  themeBtn.textContent = theme === "dark" ? "☾" : "☀";
+  themeIcon.textContent = theme === "dark" ? "☾" : "☀";
 }
 
 function toggleTheme() {
@@ -52,7 +53,7 @@ function toggleTheme() {
 
 function autoGrow() {
   input.style.height = "0px";
-  input.style.height = Math.min(input.scrollHeight, 160) + "px";
+  input.style.height = Math.min(input.scrollHeight, 180) + "px";
 }
 
 function escapeHtml(s) {
@@ -136,6 +137,16 @@ minBtn.addEventListener("click", async () => window.api.minimize());
 maxBtn.addEventListener("click", async () => window.api.toggleMaximize());
 themeBtn.addEventListener("click", toggleTheme);
 
+/* Keep UI in sync with maximize state */
+async function syncMaxState() {
+  const isMax = await window.api.isMaximized();
+  appEl.classList.toggle("maxed", !!isMax);
+}
+
+window.api.onState(({ maximized }) => {
+  appEl.classList.toggle("maxed", !!maximized);
+});
+
 /* ---------- Composer ---------- */
 sendBtn.addEventListener("click", () => {
   const t = input.value;
@@ -156,7 +167,7 @@ input.addEventListener("keydown", (e) => {
   }
 });
 
-/* ---------- Upload files (simple inject) ---------- */
+/* ---------- Upload ---------- */
 uploadBtn.addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", async () => {
@@ -167,6 +178,7 @@ fileInput.addEventListener("change", async () => {
     const text = await readFileAsText(f);
     const clipped = clip(text, 18000);
     showToast(`Loaded: ${f.name}`);
+    addBubble(`✅ Loaded: ${f.name}`, "ai");
 
     chatHistory.push({
       role: "system",
@@ -174,8 +186,6 @@ fileInput.addEventListener("change", async () => {
         `User uploaded file "${f.name}". Content (may be truncated):\n` +
         `---BEGIN FILE---\n${clipped}\n---END FILE---`
     });
-
-    addBubble(`✅ Loaded file: ${f.name}`, "ai");
   }
 
   fileInput.value = "";
@@ -183,124 +193,23 @@ fileInput.addEventListener("change", async () => {
 
 function readFileAsText(file) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read file."));
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.readAsText(file);
+    const r = new FileReader();
+    r.onerror = () => reject(new Error("Failed to read file."));
+    r.onload = () => resolve(String(r.result || ""));
+    r.readAsText(file);
   });
 }
-
 function clip(s, max) {
   const str = String(s || "");
   return str.length > max ? str.slice(0, max) + "\n\n[TRUNCATED]" : str;
 }
 
-/* ---------- Alt-drag anywhere to move ---------- */
-let moveMode = null;
-
-window.addEventListener("mousedown", async (e) => {
-  // hold ALT and drag anywhere (except textarea / buttons)
-  const t = e.target;
-  const isInteractive =
-    t.closest("textarea") || t.closest("button") || t.closest("input") || t.closest("a");
-
-  if (!e.altKey || isInteractive) return;
-
-  const b = await window.api.getBounds();
-  if (!b) return;
-
-  moveMode = {
-    startX: e.screenX,
-    startY: e.screenY,
-    startBounds: b
-  };
-});
-
-window.addEventListener("mousemove", async (e) => {
-  if (!moveMode) return;
-  const dx = e.screenX - moveMode.startX;
-  const dy = e.screenY - moveMode.startY;
-
-  await window.api.setBounds({
-    x: moveMode.startBounds.x + dx,
-    y: moveMode.startBounds.y + dy,
-    width: moveMode.startBounds.width,
-    height: moveMode.startBounds.height
-  });
-});
-
-window.addEventListener("mouseup", () => {
-  moveMode = null;
-});
-
-/* ---------- Custom resize handles ---------- */
-let resizeMode = null;
-
-function startResize(dir, e) {
-  e.preventDefault();
-  e.stopPropagation();
-  window.api.getBounds().then((b) => {
-    if (!b) return;
-    resizeMode = {
-      dir,
-      startX: e.screenX,
-      startY: e.screenY,
-      startBounds: b
-    };
-  });
-}
-
-function doResize(e) {
-  if (!resizeMode) return;
-  const { dir, startX, startY, startBounds } = resizeMode;
-  const dx = e.screenX - startX;
-  const dy = e.screenY - startY;
-
-  let { x, y, width, height } = startBounds;
-
-  const minW = 360;
-  const minH = 420;
-
-  if (dir.includes("e")) width = Math.max(minW, width + dx);
-  if (dir.includes("s")) height = Math.max(minH, height + dy);
-
-  if (dir.includes("w")) {
-    const newW = Math.max(minW, width - dx);
-    x = x + (width - newW);
-    width = newW;
-  }
-
-  if (dir.includes("n")) {
-    const newH = Math.max(minH, height - dy);
-    y = y + (height - newH);
-    height = newH;
-  }
-
-  window.api.setBounds({ x, y, width, height });
-}
-
-function endResize() { resizeMode = null; }
-
-document.querySelector(".r-n").addEventListener("mousedown", (e) => startResize("n", e));
-document.querySelector(".r-s").addEventListener("mousedown", (e) => startResize("s", e));
-document.querySelector(".r-e").addEventListener("mousedown", (e) => startResize("e", e));
-document.querySelector(".r-w").addEventListener("mousedown", (e) => startResize("w", e));
-document.querySelector(".r-ne").addEventListener("mousedown", (e) => startResize("ne", e));
-document.querySelector(".r-nw").addEventListener("mousedown", (e) => startResize("nw", e));
-document.querySelector(".r-se").addEventListener("mousedown", (e) => startResize("se", e));
-document.querySelector(".r-sw").addEventListener("mousedown", (e) => startResize("sw", e));
-
-window.addEventListener("mousemove", doResize);
-window.addEventListener("mouseup", endResize);
-
-/* ---------- Entrance animation trigger ---------- */
+/* ---------- Entrance animation ---------- */
 function playEntrance() {
   appEl.classList.remove("enter");
-  // force reflow so animation re-triggers
   void appEl.offsetWidth;
   appEl.classList.add("enter");
 }
-
 window.api.onShown(() => playEntrance());
 
 /* ---------- Boot ---------- */
@@ -311,3 +220,4 @@ setInterval(refreshHealth, 7000);
 autoGrow();
 input.focus();
 playEntrance();
+syncMaxState();

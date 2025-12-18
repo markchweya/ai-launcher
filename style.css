@@ -6,10 +6,13 @@
   --muted: rgba(245,246,247,0.62);
   --stroke: rgba(255,255,255,0.10);
   --shadow: rgba(0,0,0,0.55);
+
   --ai: rgba(0,170,255,0.18);
   --you: rgba(255,255,255,0.06);
+
   --btn: rgba(255,255,255,0.06);
   --btnHover: rgba(255,255,255,0.10);
+
   --scroll: rgba(255,255,255,0.16);
   --scrollHover: rgba(255,255,255,0.32);
 }
@@ -22,10 +25,13 @@ body[data-theme="light"]{
   --muted: rgba(18,19,22,0.55);
   --stroke: rgba(0,0,0,0.10);
   --shadow: rgba(0,0,0,0.18);
+
   --ai: rgba(0,110,255,0.10);
   --you: rgba(0,0,0,0.04);
+
   --btn: rgba(0,0,0,0.04);
   --btnHover: rgba(0,0,0,0.07);
+
   --scroll: rgba(0,0,0,0.18);
   --scrollHover: rgba(0,0,0,0.34);
 }
@@ -49,14 +55,13 @@ body{
   display:flex;
   flex-direction:column;
 
-  /* Entrance animation base state */
   transform: scale(0.965);
   opacity: 0;
   filter: blur(8px);
 }
 
 .app.enter{
-  animation: popIn 480ms cubic-bezier(.2,.9,.2,1) forwards;
+  animation: popIn 520ms cubic-bezier(.2,.9,.2,1) forwards;
 }
 
 @keyframes popIn{
@@ -65,20 +70,43 @@ body{
   100% { opacity:1; transform: scale(1.0); filter: blur(0px); }
 }
 
+/* ✅ Maximized mode: no floating-card vibes */
+.app.maxed{
+  border-radius: 0px;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: blur(14px);
+}
+
 /* Topbar */
 .topbar{
-  padding: 14px 14px 10px;
+  padding: 12px 14px 10px;
   display:flex;
   align-items:center;
   justify-content:space-between;
   background: linear-gradient(180deg, var(--panel), transparent);
-  -webkit-app-region: drag; /* ✅ drag window by topbar */
+  -webkit-app-region: drag;
+}
+
+.leftBrand{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.badge{
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(0,170,255,0.55);
+  border: 1px solid var(--stroke);
 }
 
 .brandTitle{
   font-weight: 800;
   letter-spacing: 0.2px;
   font-size: 15px;
+  line-height: 1.1;
 }
 .brandSub{
   font-size: 12px;
@@ -86,7 +114,19 @@ body{
   color: var(--muted);
 }
 
-.topActions{ display:flex; gap:10px; -webkit-app-region: no-drag; }
+.rightActions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  -webkit-app-region: no-drag;
+}
+
+.divider{
+  width: 1px;
+  height: 18px;
+  background: var(--stroke);
+  border-radius: 999px;
+}
 
 .iconBtn{
   border: 1px solid var(--stroke);
@@ -98,10 +138,41 @@ body{
 }
 .iconBtn:hover{ background: var(--btnHover); }
 
-/* toast */
+/* Modern window controls */
+.winControls{ display:flex; gap:8px; }
+.wcBtn{
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  border: 1px solid var(--stroke);
+  background: rgba(255,255,255,0.03);
+  cursor:pointer;
+  display:grid;
+  place-items:center;
+}
+.wcBtn:hover{ background: rgba(255,255,255,0.08); }
+.wcBtn:active{ transform: scale(0.98); }
+
+.wcBtn svg{
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.9;
+}
+
+.wcBtn.danger:hover{
+  background: rgba(255,80,80,0.12);
+  border-color: rgba(255,80,80,0.25);
+}
+
+/* Toast */
 .toast{
   position:absolute;
-  top: 66px;
+  top: 64px;
   left:50%;
   transform: translateX(-50%);
   background: var(--panel2);
@@ -112,7 +183,6 @@ body{
   opacity:0;
   pointer-events:none;
   transition: opacity 160ms ease, transform 160ms ease;
-  color: var(--text);
   font-size: 13px;
 }
 .toast.show{
@@ -120,11 +190,32 @@ body{
   transform: translateX(-50%) translateY(6px);
 }
 
-/* messages */
+/* Centered content like ChatGPT */
+.content{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  padding: 8px 12px 10px;
+}
+
+/* In maxed mode, keep chat centered with max width */
+.app.maxed .content{
+  padding: 16px 18px 14px;
+  align-items:center;
+}
+.app.maxed .messages,
+.app.maxed .composer,
+.app.maxed .disclaimer,
+.app.maxed .footerHint{
+  width: min(860px, 100%);
+}
+
+/* Messages */
 .messages{
   flex:1;
-  padding: 10px 12px;
+  padding: 10px 0;
   overflow-y:auto;
+  width: 100%;
 }
 
 .msg{
@@ -132,7 +223,7 @@ body{
   border-radius: 18px;
   padding: 12px 12px;
   margin: 10px 0;
-  max-width: 94%;
+  max-width: 92%;
   line-height: 1.45;
   font-size: 14px;
   white-space: pre-wrap;
@@ -142,7 +233,7 @@ body{
 .msg.ai{ background: var(--ai); margin-right:auto; }
 .msg.you{ background: var(--you); margin-left:auto; }
 
-/* code blocks */
+/* Code blocks */
 pre{
   margin: 10px 0 0;
   padding: 10px 12px;
@@ -154,13 +245,15 @@ pre{
 body[data-theme="light"] pre{ background: rgba(0,0,0,0.06); }
 code{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 13px; }
 
-/* composer */
+/* Composer */
 .composer{
+  width: 100%;
   display:flex;
   gap: 10px;
   padding: 12px;
-  border-top: 1px solid var(--stroke);
-  background: linear-gradient(0deg, var(--panel), transparent);
+  border: 1px solid var(--stroke);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.00));
 }
 
 .pillBtn{
@@ -185,7 +278,7 @@ code{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liber
   padding: 10px 12px;
   outline:none;
   min-height: 44px;
-  max-height: 160px;
+  max-height: 180px;
   overflow-y:auto;
   font-size: 14px;
   -webkit-app-region: no-drag;
@@ -193,25 +286,34 @@ code{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liber
 
 .sendBtn{
   border: 1px solid var(--stroke);
-  background: rgba(0,170,255,0.20);
+  background: rgba(0,170,255,0.18);
   color: var(--text);
   border-radius: 16px;
   padding: 10px 14px;
   cursor:pointer;
-  font-weight: 700;
+  font-weight: 750;
 }
 .sendBtn:hover{ filter: brightness(1.06); }
 
-.footerHint{
-  padding: 0 12px 10px;
-  font-size: 11px;
+.disclaimer{
+  margin-top: 10px;
+  font-size: 12px;
   color: var(--muted);
+  text-align: center;
 }
 
-/* Scrollbar */
+.footerHint{
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align:center;
+}
+
+/* Scrollbars */
 .messages::-webkit-scrollbar,
 #input::-webkit-scrollbar,
 pre::-webkit-scrollbar{ width: 10px; height: 10px; }
+
 .messages::-webkit-scrollbar-thumb,
 #input::-webkit-scrollbar-thumb,
 pre::-webkit-scrollbar-thumb{
@@ -231,7 +333,7 @@ pre::-webkit-scrollbar-thumb:hover{
 #input::-webkit-scrollbar-track,
 pre::-webkit-scrollbar-track{ background: transparent; }
 
-/* Custom resize handles (frameless window) */
+/* Custom resize handles */
 .rh{ position:absolute; z-index: 50; }
 .r-n{ top:0; left:12px; right:12px; height:8px; cursor: ns-resize; }
 .r-s{ bottom:0; left:12px; right:12px; height:10px; cursor: ns-resize; }
@@ -241,3 +343,6 @@ pre::-webkit-scrollbar-track{ background: transparent; }
 .r-nw{ top:0; left:0; width:14px; height:14px; cursor: nwse-resize; }
 .r-se{ bottom:0; right:0; width:14px; height:14px; cursor: nwse-resize; }
 .r-sw{ bottom:0; left:0; width:14px; height:14px; cursor: nesw-resize; }
+
+/* Hide resize handles when maximized */
+.app.maxed .rh{ display:none; }

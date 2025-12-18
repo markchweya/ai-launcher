@@ -8,39 +8,62 @@
 </head>
 <body>
   <div class="app" id="app">
-    <!-- Top bar (drag here) -->
     <div class="topbar" id="dragBar">
-      <div class="brand">
-        <div class="brandTitle">AI Assistant</div>
-        <div class="brandSub" id="statusText">Checking model…</div>
+      <div class="leftBrand">
+        <div class="badge"></div>
+        <div class="brandText">
+          <div class="brandTitle">AI Assistant</div>
+          <div class="brandSub" id="statusText">Checking model…</div>
+        </div>
       </div>
 
-      <div class="topActions">
-        <button class="iconBtn" id="themeBtn" title="Toggle theme">☾</button>
-        <button class="iconBtn" id="minBtn" title="Minimize">—</button>
-        <button class="iconBtn" id="maxBtn" title="Maximize / Restore">▢</button>
-        <button class="iconBtn" id="closeBtn" title="Hide">✕</button>
+      <div class="rightActions">
+        <button class="iconBtn" id="themeBtn" title="Toggle theme">
+          <!-- moon/sun will be injected -->
+          <span id="themeIcon">☾</span>
+        </button>
+
+        <div class="divider"></div>
+
+        <div class="winControls">
+          <button class="wcBtn" id="minBtn" title="Minimize">
+            <!-- minus -->
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg>
+          </button>
+          <button class="wcBtn" id="maxBtn" title="Maximize / Restore">
+            <!-- square -->
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z"/></svg>
+          </button>
+          <button class="wcBtn danger" id="closeBtn" title="Hide">
+            <!-- x -->
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
+          </button>
+        </div>
       </div>
     </div>
 
     <div class="toast" id="toast"></div>
 
-    <div class="messages" id="messages"></div>
+    <!-- Centered content like ChatGPT when maximized -->
+    <div class="content">
+      <div class="messages" id="messages"></div>
 
-    <div class="composer">
-      <input type="file" id="fileInput" hidden multiple accept=".txt,.md,.json" />
-      <button class="pillBtn" id="uploadBtn" title="Upload">＋</button>
+      <div class="composer">
+        <input type="file" id="fileInput" hidden multiple accept=".txt,.md,.json" />
+        <button class="pillBtn" id="uploadBtn" title="Upload">＋</button>
 
-      <textarea
-        id="input"
-        rows="1"
-        placeholder="Ask anything… (Enter send • Shift+Enter new line)"
-      ></textarea>
+        <textarea
+          id="input"
+          rows="1"
+          placeholder="Ask anything… (Enter send • Shift+Enter new line)"
+        ></textarea>
 
-      <button class="sendBtn" id="sendBtn">Send</button>
+        <button class="sendBtn" id="sendBtn">Send</button>
+      </div>
+
+      <div class="disclaimer">AI can make mistakes. Check important info.</div>
+      <div class="footerHint" id="hint">Shortcut: Ctrl + A + I • Alt-drag anywhere to move</div>
     </div>
-
-    <div class="footerHint" id="hint">Shortcut: Ctrl + A + I • Alt-drag anywhere to move</div>
 
     <!-- Custom resize handles -->
     <div class="rh r-n"></div>
