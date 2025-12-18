@@ -17,9 +17,15 @@
       </div>
 
       <div class="rightActions">
-        <button class="iconBtn" id="settingsBtn" title="Settings">Settings</button>
+        <!-- Settings (gear icon) -->
+        <button class="iconIconBtn" id="settingsBtn" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="gearIcon">
+            <path d="M12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"></path>
+            <path d="M19.4 15a7.8 7.8 0 0 0 .1-1 7.8 7.8 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1l-.4-2.6H9.1L8.7 7a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.5a7.8 7.8 0 0 0-.1 1 7.8 7.8 0 0 0 .1 1l-2 1.5 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h5.8l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5Z"></path>
+          </svg>
+        </button>
 
-        <!-- Icon theme button (moon/sun) -->
+        <!-- Theme (moon/sun icon) -->
         <button class="iconIconBtn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">
           <svg id="themeIconMoon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M21 14.5A8.5 8.5 0 0 1 9.5 3a6.5 6.5 0 1 0 11.5 11.5Z"></path>
@@ -33,13 +39,13 @@
         <div class="divider"></div>
 
         <div class="winControls">
-          <button class="wcBtn" id="minBtn" title="Minimize">
+          <button class="wcBtn" id="minBtn" title="Minimize" aria-label="Minimize">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg>
           </button>
-          <button class="wcBtn" id="maxBtn" title="Maximize / Restore">
+          <button class="wcBtn" id="maxBtn" title="Maximize / Restore" aria-label="Maximize / Restore">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z"/></svg>
           </button>
-          <button class="wcBtn danger" id="closeBtn" title="Hide">
+          <button class="wcBtn danger" id="closeBtn" title="Hide" aria-label="Hide">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
           </button>
         </div>
@@ -48,6 +54,7 @@
 
     <div class="toast" id="toast"></div>
 
+    <!-- Settings panel -->
     <div class="settingsPanel" id="settingsPanel" aria-hidden="true">
       <div class="settingsHeader">
         <div class="settingsTitle">Settings</div>
@@ -82,7 +89,7 @@
 
       <div class="composer">
         <input type="file" id="fileInput" hidden multiple accept=".txt,.md,.json" />
-        <button class="pillBtn" id="uploadBtn" title="Upload">+</button>
+        <button class="pillBtn" id="uploadBtn" title="Upload" aria-label="Upload">+</button>
 
         <textarea
           id="input"
@@ -96,6 +103,7 @@
       <div class="disclaimer">AI can make mistakes. Check important info.</div>
     </div>
 
+    <!-- Resize handles -->
     <div class="rh r-n"></div>
     <div class="rh r-s"></div>
     <div class="rh r-e"></div>

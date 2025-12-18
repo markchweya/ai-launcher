@@ -149,7 +149,7 @@ body{
 .iconBtn:active{ transform: scale(0.99); }
 .iconBtn.small{ padding: 7px 10px; border-radius: 12px; font-weight: 650; }
 
-/* Theme icon button */
+/* Icon-only buttons (Settings + Theme) */
 .iconIconBtn{
   width: 44px;
   height: 38px;
@@ -168,24 +168,40 @@ body{
 .iconIconBtn svg{
   width: 18px;
   height: 18px;
+  opacity: 0.92;
+}
+
+/* Theme icons stack */
+#themeIconMoon,
+#themeIconSun{
+  position:absolute;
+}
+
+/* Moon slightly filled */
+#themeIconMoon{
+  fill: var(--text);
+  stroke: none;
+}
+
+/* Sun outlined */
+#themeIconSun{
   fill: none;
   stroke: var(--text);
   stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.92;
-  position:absolute;
 }
 
-#themeIconMoon{
-  fill: var(--text);
-  stroke: none;
-}
-#themeIconSun{
+/* Gear icon outlined */
+.gearIcon{
   fill: none;
+  stroke: var(--text);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-/* default hidden (renderer controls this) */
+/* default hidden (renderer controls moon/sun) */
 #themeIconMoon{ display:none; }
 #themeIconSun{ display:none; }
 
