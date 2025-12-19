@@ -1,5 +1,11 @@
+// main.js — AI Launcher (Foundry Local Phi + OpenAI) with working win:* IPC
 const path = require("path");
 const fs = require("fs");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+
+const execFileAsync = promisify(execFile);
+
 const {
   app,
   BrowserWindow,
@@ -16,19 +22,19 @@ let tray = null;
 
 /* -----------------------------
    Cache / Chromium permissions
-   (fixes cache_util_win.cc access denied spam)
 ------------------------------ */
 const userCache = path.join(app.getPath("userData"), "Cache");
 app.setPath("cache", userCache);
 app.commandLine.appendSwitch("disk-cache-dir", userCache);
 app.commandLine.appendSwitch("disable-gpu-cache");
-// optional: reduces some Windows occlusion behavior edge-cases
-app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
-// optional: reduce autofill protocol noise
-app.commandLine.appendSwitch(
-  "disable-features",
-  "AutofillEnableAccountWalletStorage,AutofillServerCommunication"
-);
+
+// Combine disable-features (multiple calls can override)
+const disableFeatures = [
+  "CalculateNativeWinOcclusion",
+  "AutofillEnableAccountWalletStorage",
+  "AutofillServerCommunication"
+].join(",");
+app.commandLine.appendSwitch("disable-features", disableFeatures);
 
 /* -----------------------------
    Settings (stored locally)
@@ -40,15 +46,22 @@ function settingsPath() {
 function loadSettings() {
   try {
     const p = settingsPath();
-    if (!fs.existsSync(p)) return { provider: "ollama", openai_api_key: "" };
+    if (!fs.existsSync(p)) {
+      return {
+        provider: "foundry", // "foundry" | "openai"
+        openai_api_key: "",
+        foundry_prefer: "phi-3.5" // e.g. "phi-4" or exact model id
+      };
+    }
     const raw = fs.readFileSync(p, "utf-8");
     const data = JSON.parse(raw);
     return {
-      provider: data.provider || "ollama",
-      openai_api_key: data.openai_api_key || ""
+      provider: data.provider || "foundry",
+      openai_api_key: data.openai_api_key || "",
+      foundry_prefer: data.foundry_prefer || "phi-3.5"
     };
   } catch {
-    return { provider: "ollama", openai_api_key: "" };
+    return { provider: "foundry", openai_api_key: "", foundry_prefer: "phi-3.5" };
   }
 }
 
@@ -98,21 +111,21 @@ function createWindow() {
 
   win.loadFile("index.html");
 
+  // Renderer listeners expect win:shown + win:state
   win.on("show", () => {
-    if (win && win.webContents) win.webContents.send("app:shown");
+    if (win?.webContents) win.webContents.send("win:shown");
   });
 
   win.on("maximize", () => {
-    if (win && win.webContents) win.webContents.send("app:state", { maximized: true });
+    if (win?.webContents) win.webContents.send("win:state", { maximized: true });
   });
 
   win.on("unmaximize", () => {
-    if (win && win.webContents) win.webContents.send("app:state", { maximized: false });
+    if (win?.webContents) win.webContents.send("win:state", { maximized: false });
   });
 
-  // Prevent quitting when user closes window (we hide instead; tray opens it)
+  // Hide on close (keep tray alive)
   win.on("close", (e) => {
-    // If app is quitting, allow close
     if (app.isQuiting) return;
     e.preventDefault();
     win.hide();
@@ -124,25 +137,18 @@ function createWindow() {
 }
 
 /* -----------------------------
-   Tray (fallback to open/hide)
+   Tray
 ------------------------------ */
 function createTray() {
-  // Try to load custom icon if you add one later:
-  // build/icon.ico
   let icon = nativeImage.createEmpty();
   const iconPath = path.join(__dirname, "build", "icon.ico");
-  if (fs.existsSync(iconPath)) {
-    icon = nativeImage.createFromPath(iconPath);
-  }
+  if (fs.existsSync(iconPath)) icon = nativeImage.createFromPath(iconPath);
 
   tray = new Tray(icon);
   tray.setToolTip("AI Launcher");
 
   const menu = Menu.buildFromTemplate([
-    {
-      label: "Show / Hide",
-      click: () => toggleWindow()
-    },
+    { label: "Show / Hide", click: () => toggleWindow() },
     { type: "separator" },
     {
       label: "Quit",
@@ -154,8 +160,6 @@ function createTray() {
   ]);
 
   tray.setContextMenu(menu);
-
-  // Left click toggles too
   tray.on("click", () => toggleWindow());
 }
 
@@ -163,16 +167,12 @@ function createTray() {
    Global Shortcut
 ------------------------------ */
 function registerShortcuts() {
-  // You requested Ctrl + A + I (note: many apps intercept Ctrl+A)
   const primary = "Control+A+I";
-
-  // Fallback so you never get locked out
   const fallback = "Control+Shift+I";
 
-  let ok = globalShortcut.register(primary, toggleWindow);
+  const ok = globalShortcut.register(primary, toggleWindow);
   if (!ok) console.log("Shortcut failed:", primary);
 
-  // Always register fallback as a backup
   const ok2 = globalShortcut.register(fallback, toggleWindow);
   if (!ok2) console.log("Shortcut failed:", fallback);
 
@@ -185,18 +185,93 @@ function registerShortcuts() {
 }
 
 /* -----------------------------
-   Ollama + OpenAI helpers
+   Foundry Local helpers
 ------------------------------ */
-async function ollamaTags() {
-  const r = await fetch("http://127.0.0.1:11434/api/tags");
-  if (!r.ok) throw new Error("Ollama not reachable");
-  return await r.json();
+async function runFoundry(args) {
+  // Uses foundry.exe from PATH
+  const { stdout } = await execFileAsync("foundry", args, { windowsHide: true });
+  return String(stdout || "");
 }
 
-async function ollamaChat(model, messages) {
-  const payload = { model, messages, stream: false };
+async function getFoundryV1Base() {
+  // Example:
+  // "🟢 Model management service is running on http://127.0.0.1:63171/openai/status"
+  let out = "";
+  try {
+    out = await runFoundry(["service", "status"]);
+  } catch {
+    // Try to start once
+    await runFoundry(["service", "start"]).catch(() => {});
+    out = await runFoundry(["service", "status"]);
+  }
 
-  const r = await fetch("http://127.0.0.1:11434/api/chat", {
+  const m = out.match(/https?:\/\/127\.0\.0\.1:(\d+)/i);
+  if (!m) throw new Error("Foundry service status did not include a localhost port.");
+  const port = Number(m[1]);
+  if (!port || port <= 0) throw new Error("Foundry returned invalid port (0).");
+
+  // You verified /v1/models works:
+  return `http://127.0.0.1:${port}/v1`;
+}
+
+async function foundryListModels() {
+  const base = await getFoundryV1Base();
+  const r = await fetch(`${base}/models`);
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`Foundry /v1/models failed: ${t}`);
+  }
+  return { base, json: await r.json() };
+}
+
+function pickFoundryModelId(modelsJson, prefer = "phi-3.5") {
+  const arr = Array.isArray(modelsJson?.data) ? modelsJson.data : [];
+  if (!arr.length) return "";
+
+  const p = String(prefer || "").toLowerCase().trim();
+
+  // If prefer matches an exact id, use it
+  const exact = arr.find((m) => String(m?.id || "").toLowerCase() === p);
+  if (exact?.id) return exact.id;
+
+  // Prefer OpenVINO GPU variant if it matches
+  const gpuPreferred = arr.find(
+    (m) =>
+      String(m?.id || "").toLowerCase().includes("openvino") &&
+      String(m?.id || "").toLowerCase().includes(p)
+  );
+  if (gpuPreferred?.id) return gpuPreferred.id;
+
+  // Any contains match
+  const anyMatch = arr.find((m) => String(m?.id || "").toLowerCase().includes(p));
+  if (anyMatch?.id) return anyMatch.id;
+
+  // Fallback preferences
+  const phi35 = arr.find((m) => /phi[- ]?3\.5/i.test(String(m?.id || "")));
+  if (phi35?.id) return phi35.id;
+
+  const phi4 = arr.find((m) => /phi[- ]?4/i.test(String(m?.id || "")));
+  if (phi4?.id) return phi4.id;
+
+  return arr[0]?.id || "";
+}
+
+async function foundryChat(messages) {
+  const s = loadSettings();
+  const prefer = s.foundry_prefer || "phi-3.5";
+
+  const { base, json } = await foundryListModels();
+  const modelId = pickFoundryModelId(json, prefer);
+
+  if (!modelId) throw new Error("No Foundry models found.");
+
+  const payload = {
+    model: modelId, // MUST be exact id from /v1/models
+    messages,
+    stream: false
+  };
+
+  const r = await fetch(`${base}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -204,18 +279,18 @@ async function ollamaChat(model, messages) {
 
   if (!r.ok) {
     const t = await r.text().catch(() => "");
-    throw new Error("Ollama chat failed: " + t);
+    throw new Error("Foundry Local chat failed: " + t);
   }
 
   const data = await r.json();
-  return data?.message?.content || "";
+  return data?.choices?.[0]?.message?.content || "";
 }
 
+/* -----------------------------
+   OpenAI helper
+------------------------------ */
 async function openaiChat(apiKey, messages) {
-  const payload = {
-    model: "gpt-4o-mini",
-    messages
-  };
+  const payload = { model: "gpt-4o-mini", messages };
 
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -236,42 +311,65 @@ async function openaiChat(apiKey, messages) {
 }
 
 /* -----------------------------
-   IPC
+   IPC wiring (MUST match preload.js)
 ------------------------------ */
 function wireIPC() {
-  ipcMain.handle("app:hide", () => {
+  // ---- Window controls (your buttons call these) ----
+  ipcMain.handle("win:hide", () => {
     if (win) win.hide();
     return true;
   });
 
-  ipcMain.handle("app:minimize", () => {
+  ipcMain.handle("win:minimize", () => {
     if (win) win.minimize();
     return true;
   });
 
-  ipcMain.handle("app:toggleMaximize", () => {
+  ipcMain.handle("win:toggleMaximize", () => {
     if (!win) return false;
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
     return true;
   });
 
-  ipcMain.handle("app:isMaximized", () => {
+  ipcMain.handle("win:isMaximized", () => {
     if (!win) return false;
     return win.isMaximized();
   });
 
+  ipcMain.handle("win:getBounds", () => {
+    if (!win) return null;
+    return win.getBounds();
+  });
+
+  ipcMain.handle("win:setBounds", (evt, b) => {
+    if (!win) return false;
+    if (!b || typeof b !== "object") return false;
+
+    // only set allowed keys
+    const next = {};
+    for (const k of ["x", "y", "width", "height"]) {
+      if (typeof b[k] === "number" && Number.isFinite(b[k])) next[k] = b[k];
+    }
+    if (!Object.keys(next).length) return false;
+
+    win.setBounds(next, true);
+    return true;
+  });
+
+  // ---- Settings (optional: only if your renderer uses them) ----
   ipcMain.handle("settings:get", () => {
     const s = loadSettings();
     return {
-      provider: s.provider || "ollama",
-      openaiKeySet: !!(s.openai_api_key && s.openai_api_key.trim().length > 0)
+      provider: s.provider || "foundry",
+      openaiKeySet: !!(s.openai_api_key && s.openai_api_key.trim().length > 0),
+      foundryPrefer: s.foundry_prefer || "phi-3.5"
     };
   });
 
   ipcMain.handle("settings:setProvider", (evt, provider) => {
     const p = String(provider || "").trim();
-    if (p !== "ollama" && p !== "openai") return { ok: false, error: "Invalid provider" };
+    if (!["foundry", "openai"].includes(p)) return { ok: false, error: "Invalid provider" };
     saveSettings({ provider: p });
     return { ok: true };
   });
@@ -283,24 +381,43 @@ function wireIPC() {
     return { ok: true };
   });
 
-  ipcMain.handle("app:health", async () => {
+  ipcMain.handle("settings:setFoundryPrefer", (evt, prefer) => {
+    const v = String(prefer || "").trim();
+    if (!v) return { ok: false, error: "Empty prefer" };
+    saveSettings({ foundry_prefer: v });
+    return { ok: true };
+  });
+
+  // ---- AI endpoints (your preload calls ai:ask and ai:health) ----
+  ipcMain.handle("ai:health", async () => {
     const s = loadSettings();
 
     if (s.provider === "openai") {
       const hasKey = !!(s.openai_api_key && s.openai_api_key.trim().length > 0);
-      return { provider: "openai", ok: hasKey, model: "gpt-4o-mini" };
+      return {
+        provider: "openai",
+        ok: hasKey,
+        model: "gpt-4o-mini"
+      };
     }
 
+    // Foundry
     try {
-      const tags = await ollamaTags();
-      const models = (tags.models || []).map((m) => m.name);
-      const model =
-        models.find((x) => x.toLowerCase().startsWith("gemma3:4b")) ||
-        models[0] ||
-        "";
-      return { provider: "ollama", ok: true, hasModel: !!model, model };
-    } catch {
-      return { provider: "ollama", ok: false, hasModel: false, model: "" };
+      const { base, json } = await foundryListModels();
+      const picked = pickFoundryModelId(json, s.foundry_prefer || "phi-3.5");
+      return {
+        provider: "foundry",
+        ok: true,
+        baseUrl: base,
+        model: picked
+      };
+    } catch (e) {
+      return {
+        provider: "foundry",
+        ok: false,
+        model: "",
+        error: e?.message || String(e)
+      };
     }
   });
 
@@ -314,14 +431,7 @@ function wireIPC() {
       return await openaiChat(key, safeMessages);
     }
 
-    const tags = await ollamaTags();
-    const models = (tags.models || []).map((m) => m.name);
-    const model =
-      models.find((x) => x.toLowerCase().startsWith("gemma3:4b")) ||
-      models[0];
-
-    if (!model) throw new Error("No Ollama models found");
-    return await ollamaChat(model, safeMessages);
+    return await foundryChat(safeMessages);
   });
 }
 

@@ -38,11 +38,16 @@ body[data-theme="light"]{
 
 *{ box-sizing:border-box; }
 
+html, body{
+  height: 100%;
+}
+
 body{
   margin:0;
   background:transparent;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   color: var(--text);
+  overflow: hidden; /* ✅ keep scroll inside .messages only */
 }
 
 /* App */
@@ -253,6 +258,7 @@ body{
   transition: opacity 160ms ease, transform 160ms ease;
   font-size: 13px;
   z-index: 30;
+  -webkit-app-region: no-drag;
 }
 .toast.show{
   opacity:1;
@@ -277,6 +283,7 @@ body{
   transform: translateY(-10px);
   pointer-events:none;
   transition: opacity 160ms ease, transform 160ms ease;
+  -webkit-app-region: no-drag;
 }
 .settingsPanel.open{
   opacity: 1;
@@ -348,6 +355,10 @@ body{
   display:flex;
   flex-direction:column;
   padding: 8px 12px 12px;
+
+  min-height: 0;      /* ✅ CRITICAL */
+  overflow: hidden;   /* ✅ CRITICAL */
+  -webkit-app-region: no-drag;
 }
 
 .app.maxed .content{
@@ -355,18 +366,22 @@ body{
   align-items:center;
 }
 .app.maxed .messages,
-.app.maxed .composer,
-.app.maxed .disclaimer{
+.app.maxed .composerWrap{
   width: min(860px, 100%);
 }
 
+/* ✅ Scroll container */
 .messages{
   flex:1;
   padding: 10px 0;
   overflow-y:auto;
   width: 100%;
+
+  min-height: 0; /* ✅ CRITICAL */
+  -webkit-app-region: no-drag;
 }
 
+/* Message bubbles */
 .msg{
   border: 1px solid var(--stroke);
   border-radius: 18px;
@@ -377,6 +392,7 @@ body{
   font-size: 14px;
   white-space: pre-wrap;
   word-wrap: break-word;
+  -webkit-app-region: no-drag;
 }
 
 .msg.ai{ background: var(--ai); margin-right:auto; }
@@ -389,11 +405,23 @@ pre{
   background: rgba(0,0,0,0.30);
   border: 1px solid var(--stroke);
   overflow:auto;
+  -webkit-app-region: no-drag;
 }
 body[data-theme="light"] pre{ background: rgba(0,0,0,0.06); }
+
 code{
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 13px;
+}
+
+/* ✅ Sticky footer (composer + disclaimer) */
+.composerWrap{
+  flex: 0 0 auto;
+  width: 100%;
+  display:flex;
+  flex-direction:column;
+  gap: 8px;
+  -webkit-app-region: no-drag;
 }
 
 .composer{
@@ -404,6 +432,7 @@ code{
   border: 1px solid var(--stroke);
   border-radius: 20px;
   background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.00));
+  -webkit-app-region: no-drag;
 }
 
 .pillBtn{
@@ -415,6 +444,7 @@ code{
   cursor:pointer;
   font-size: 16px;
   line-height: 1;
+  -webkit-app-region: no-drag;
 }
 .pillBtn:hover{ background: var(--btnHover); }
 
@@ -442,14 +472,15 @@ code{
   padding: 10px 14px;
   cursor:pointer;
   font-weight: 750;
+  -webkit-app-region: no-drag;
 }
 .sendBtn:hover{ filter: brightness(1.06); }
 
 .disclaimer{
-  margin-top: 10px;
   font-size: 12px;
   color: var(--muted);
   text-align: center;
+  -webkit-app-region: no-drag;
 }
 
 /* Scrollbars */
@@ -484,7 +515,7 @@ pre::-webkit-scrollbar-track{
 }
 
 /* Resize handles */
-.rh{ position:absolute; z-index: 50; }
+.rh{ position:absolute; z-index: 50; -webkit-app-region: no-drag; }
 .r-n{ top:0; left:12px; right:12px; height:8px; cursor: ns-resize; }
 .r-s{ bottom:0; left:12px; right:12px; height:10px; cursor: ns-resize; }
 .r-e{ top:12px; bottom:12px; right:0; width:10px; cursor: ew-resize; }

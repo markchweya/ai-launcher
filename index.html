@@ -64,6 +64,7 @@
       <div class="settingsRow">
         <label class="label">Provider</label>
         <select id="providerSelect" class="select">
+          <option value="foundry">Local (Foundry)</option>
           <option value="ollama">Local (Ollama)</option>
           <option value="openai">OpenAI</option>
         </select>
@@ -80,27 +81,26 @@
       </div>
 
       <div class="settingsHint">
-        Your key is saved locally on this PC (userData/settings.json). You can also set OPENAI_API_KEY as an environment variable.
+        Your key is saved locally on this PC (userData/settings.json).
       </div>
     </div>
 
     <div class="content">
       <div class="messages" id="messages"></div>
 
-      <div class="composer">
-        <input type="file" id="fileInput" hidden multiple accept=".txt,.md,.json" />
-        <button class="pillBtn" id="uploadBtn" title="Upload" aria-label="Upload">+</button>
+      <!-- ✅ Sticky bottom: composer + disclaimer together -->
+      <div class="composerWrap">
+        <div class="composer">
+          <input type="file" id="fileInput" hidden multiple accept=".txt,.md,.json" />
+          <button class="pillBtn" id="uploadBtn" title="Upload" aria-label="Upload">+</button>
 
-        <textarea
-          id="input"
-          rows="1"
-          placeholder="Ask anything..."
-        ></textarea>
+          <textarea id="input" rows="1" placeholder="Ask anything..."></textarea>
 
-        <button class="sendBtn" id="sendBtn">Send</button>
+          <button class="sendBtn" id="sendBtn">Send</button>
+        </div>
+
+        <div class="disclaimer">AI can make mistakes. Check important info.</div>
       </div>
-
-      <div class="disclaimer">AI can make mistakes. Check important info.</div>
     </div>
 
     <!-- Resize handles -->

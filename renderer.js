@@ -24,6 +24,14 @@ const themeIconSun = document.getElementById("themeIconSun");
 const uploadBtn = document.getElementById("uploadBtn");
 const fileInput = document.getElementById("fileInput");
 
+/**
+ * Foundry is throwing max length 233 on your machine.
+ * So we keep the request tiny.
+ */
+const MAX_CONTEXT_CHARS = 1100;   // total payload size (roughly)
+const MAX_MSG_CHARS = 650;        // per-message cap
+const KEEP_LAST_MESSAGES = 8;     // plus system prompt
+
 let chatHistory = [
   {
     role: "system",
@@ -85,12 +93,20 @@ function renderMessage(text) {
   return html;
 }
 
+/* ✅ Only autoscroll if user is near bottom */
+function isNearBottom(el, threshold = 140) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+}
+
 function addBubble(text, cls) {
+  const stick = isNearBottom(messagesDiv);
+
   const div = document.createElement("div");
   div.className = `msg ${cls}`;
   div.innerHTML = renderMessage(text);
   messagesDiv.appendChild(div);
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+  if (stick) messagesDiv.scrollTop = messagesDiv.scrollHeight;
   return div;
 }
 
@@ -120,14 +136,23 @@ document.addEventListener("mousedown", (e) => {
   if (!inside) closeSettings();
 });
 
+/* Settings are optional depending on your preload */
 async function loadSettingsUI() {
+  if (!window.api?.settingsGet) {
+    keyStatus.textContent = "Key: (settings API not wired)";
+    return;
+  }
   const s = await window.api.settingsGet();
-  providerSelect.value = s.provider || "ollama";
+  providerSelect.value = s.provider || "foundry";
   keyStatus.textContent = s.openaiKeySet ? "Key: set" : "Key: not set";
 }
 
 providerSelect.addEventListener("change", async () => {
   const p = providerSelect.value;
+  if (!window.api?.settingsSetProvider) {
+    showToast("Settings API not wired");
+    return;
+  }
   await window.api.settingsSetProvider(p);
   showToast("Provider updated");
   await refreshHealth();
@@ -135,15 +160,12 @@ providerSelect.addEventListener("change", async () => {
 
 saveKeyBtn.addEventListener("click", async () => {
   const k = apiKeyInput.value.trim();
-  if (!k) {
-    showToast("Paste your key first");
-    return;
-  }
+  if (!k) return showToast("Paste your key first");
+  if (!window.api?.settingsSetOpenAIKey) return showToast("Settings API not wired");
+
   const r = await window.api.settingsSetOpenAIKey(k);
-  if (!r.ok) {
-    showToast(r.error || "Could not save key");
-    return;
-  }
+  if (!r.ok) return showToast(r.error || "Could not save key");
+
   apiKeyInput.value = "";
   showToast("Key saved");
   await loadSettingsUI();
@@ -161,13 +183,58 @@ async function refreshHealth() {
     return;
   }
 
-  if (h.ok) {
-    statusText.textContent = h.hasModel
-      ? `Provider: Local (Ollama) • Connected • ${h.model}`
-      : `Provider: Local (Ollama) • Connected • Model not found`;
-  } else {
-    statusText.textContent = `Provider: Local (Ollama) • Not reachable`;
+  if (h.provider === "foundry") {
+    statusText.textContent = h.ok
+      ? `Provider: Local (Foundry) • Connected • ${h.model || ""}`
+      : `Provider: Local (Foundry) • Error`;
+    return;
   }
+
+  statusText.textContent = h.ok
+    ? `Provider: Local (${h.provider || "Local"}) • Connected • ${h.model || ""}`
+    : `Provider: Local (${h.provider || "Local"}) • Not reachable`;
+}
+
+/* ---------- History trimming (prevents Foundry max length crash) ---------- */
+function clipText(s, max) {
+  const str = String(s || "");
+  return str.length > max ? str.slice(0, max) + "… [clipped]" : str;
+}
+
+function prepareHistoryForSend(history) {
+  const arr = Array.isArray(history) ? history : [];
+  if (!arr.length) return [];
+
+  // keep the first system message if present
+  const sys = arr[0]?.role === "system" ? { ...arr[0], content: clipText(arr[0].content, 380) } : null;
+
+  // take last N messages (excluding system)
+  const tail = arr.slice(sys ? 1 : 0);
+  const lastN = tail.slice(Math.max(0, tail.length - KEEP_LAST_MESSAGES)).map(m => ({
+    role: m.role,
+    content: clipText(m.content, MAX_MSG_CHARS)
+  }));
+
+  // now enforce total char cap by dropping oldest until within limit
+  let out = sys ? [sys, ...lastN] : [...lastN];
+
+  function totalChars(x) {
+    return x.reduce((sum, m) => sum + String(m.content || "").length, 0);
+  }
+
+  while (out.length > 2 && totalChars(out) > MAX_CONTEXT_CHARS) {
+    // drop the oldest non-system message
+    if (out[0]?.role === "system") out.splice(1, 1);
+    else out.splice(0, 1);
+  }
+
+  // final safety: if still too big, hard-clip newest user message
+  if (totalChars(out) > MAX_CONTEXT_CHARS && out.length) {
+    const last = out[out.length - 1];
+    last.content = clipText(last.content, Math.max(200, MAX_CONTEXT_CHARS - 200));
+  }
+
+  return out;
 }
 
 /* ---------- Chat send ---------- */
@@ -188,9 +255,14 @@ async function sendMessage(text) {
   const typing = addBubble("...", "ai");
 
   try {
-    const reply = await window.api.ask(chatHistory);
+    const payloadHistory = prepareHistoryForSend(chatHistory);
+    const reply = await window.api.ask(payloadHistory);
+
     typing.innerHTML = renderMessage(reply);
     chatHistory.push({ role: "assistant", content: reply });
+
+    // only scroll if user was near bottom
+    if (isNearBottom(messagesDiv)) messagesDiv.scrollTop = messagesDiv.scrollHeight;
   } catch (e) {
     typing.innerHTML = renderMessage("Error: " + (e.message || e));
     showToast("AI error");
@@ -211,6 +283,7 @@ async function syncMaxState() {
   const isMax = await window.api.isMaximized();
   appEl.classList.toggle("maxed", !!isMax);
 }
+
 window.api.onState(({ maximized }) => {
   appEl.classList.toggle("maxed", !!maximized);
 });
@@ -244,14 +317,14 @@ fileInput.addEventListener("change", async () => {
 
   for (const f of files) {
     const text = await readFileAsText(f);
-    const clipped = clip(text, 18000);
+    const clipped = clipText(text, 1200); // keep tiny for Foundry safety
 
     addBubble(`Loaded file: ${f.name}`, "ai");
 
     chatHistory.push({
       role: "system",
       content:
-        `User uploaded file "${f.name}". Content (may be truncated):\n` +
+        `User uploaded file "${f.name}". Content (truncated):\n` +
         `---BEGIN FILE---\n${clipped}\n---END FILE---`
     });
   }
@@ -266,10 +339,6 @@ function readFileAsText(file) {
     r.onload = () => resolve(String(r.result || ""));
     r.readAsText(file);
   });
-}
-function clip(s, max) {
-  const str = String(s || "");
-  return str.length > max ? str.slice(0, max) + "\n\n[TRUNCATED]" : str;
 }
 
 /* ---------- Entrance animation ---------- */
