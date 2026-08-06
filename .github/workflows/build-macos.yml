@@ -29,7 +29,22 @@ jobs:
         run: node scripts/generate_icon.js
 
       - name: Build macOS app
-        run: npm run dist:mac
+        run: |
+          # An unset secret expands to an empty string, and electron-builder reads
+          # an empty CSC_LINK as a certificate *path* — which resolves to the
+          # project directory and fails with "<projectDir> not a file". Drop the
+          # empty values so it takes the unsigned path instead.
+          if [ -z "$CSC_LINK" ]; then
+            echo "No signing certificate configured - building unsigned."
+            unset CSC_LINK CSC_KEY_PASSWORD
+          fi
+
+          if [ -z "$APPLE_ID" ]; then
+            echo "No Apple ID configured - skipping notarization."
+            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+          fi
+
+          npm run dist:mac -- --publish never
         env:
           CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}

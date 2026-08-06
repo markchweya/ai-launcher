@@ -53,3 +53,5 @@ Unsigned local builds are fine for internal testing, but users will see macOS Ga
 ## GitHub Actions
 
 The `.github/workflows/build-macos.yml` workflow builds the macOS `.dmg` and `.zip` on `macos-latest` and uploads them as `ibia-macos`. Add the signing values above as repository secrets to produce signed/notarized release builds.
+
+Until those secrets exist the workflow builds **unsigned** artifacts, which is fine for testing but shows Gatekeeper warnings on other machines. The build step drops the signing variables when they are empty: GitHub expands an unset secret to an empty string, and electron-builder reads an empty `CSC_LINK` as a certificate *path* rather than "no certificate", failing with `<projectDir> not a file`. Adding the secrets later needs no workflow change — the same step picks them up and signs.
