@@ -296,6 +296,14 @@ body.theme-changing *{
   gap:6px;
 }
 
+body[data-platform="darwin"] .winControls{
+  display:none;
+}
+
+body[data-platform="darwin"] .leftBrand{
+  padding-left:72px;
+}
+
 .wcBtn{
   width:31px;
   height:31px;
@@ -608,6 +616,48 @@ body.theme-changing *{
   line-height:1.45;
 }
 
+.settingsSection{
+  margin-top:16px;
+  padding-top:14px;
+  border-top:1px solid var(--stroke);
+}
+
+.settingsSectionHead{
+  margin-bottom:12px;
+}
+
+.settingsSectionSub{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.45;
+}
+
+.shortcutField{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.shortcutInput{
+  flex:1;
+  cursor:pointer;
+  font-weight:700;
+  letter-spacing:0.04em;
+}
+
+.shortcutInput.capturing{
+  border-color:var(--accent-strong);
+  box-shadow:0 0 0 3px var(--accent-soft);
+  color:var(--muted);
+}
+
+.select:disabled,
+.input:disabled{
+  opacity:0.45;
+  cursor:not-allowed;
+}
+
 .settingsLibrary{
   margin-top:16px;
   padding-top:14px;
@@ -836,6 +886,7 @@ body.theme-changing *{
 }
 
 .msg{
+  position:relative;
   max-width:min(84%, 620px);
   margin:0;
   padding:13px 15px;
@@ -845,6 +896,101 @@ body.theme-changing *{
   line-height:1.55;
   font-size:14px;
   word-break:break-word;
+}
+
+.msgBody > *:first-child{
+  margin-top:0;
+}
+
+.msgBody > *:last-child{
+  margin-bottom:0;
+}
+
+.msgActions{
+  display:flex;
+  justify-content:flex-end;
+  margin:8px -4px -5px 0;
+  opacity:0;
+  transform:translateY(2px);
+  transition:opacity 140ms ease, transform 140ms ease;
+}
+
+.msg.you:hover .msgActions,
+.msg.you:focus-within .msgActions{
+  opacity:1;
+  transform:translateY(0);
+}
+
+.msgActionBtn{
+  display:grid;
+  place-items:center;
+  width:28px;
+  height:28px;
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:999px;
+  background:rgba(255,255,255,0.08);
+  color:var(--text);
+  cursor:pointer;
+}
+
+.msgActionBtn:hover{
+  background:rgba(255,255,255,0.14);
+}
+
+.msgActionBtn svg{
+  width:15px;
+  height:15px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.msg.editingMsg{
+  width:min(84%, 620px);
+}
+
+.msgEditInput{
+  width:100%;
+  min-height:72px;
+  max-height:220px;
+  padding:0;
+  border:0;
+  outline:0;
+  resize:none;
+  overflow-y:auto;
+  background:transparent;
+  color:var(--text);
+  font:inherit;
+  line-height:1.55;
+}
+
+.msgEditActions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:10px;
+}
+
+.msgEditBtn{
+  border:1px solid var(--stroke);
+  border-radius:999px;
+  background:rgba(255,255,255,0.08);
+  color:var(--text);
+  padding:7px 11px;
+  cursor:pointer;
+  font-size:12px;
+  font-weight:750;
+}
+
+.msgEditBtn:hover{
+  background:rgba(255,255,255,0.14);
+}
+
+.msgEditBtn.primary{
+  border-color:rgba(111, 140, 255, 0.4);
+  background:rgba(111, 140, 255, 0.22);
 }
 
 .msg.ai{

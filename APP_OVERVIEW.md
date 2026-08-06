@@ -1,6 +1,6 @@
 # ibia App Overview
 
-**ibia** is a lightweight Windows desktop AI assistant built for fast, everyday help without needing to keep a browser tab open. It runs quietly in the background, opens as a floating chat window from a keyboard shortcut, and lets users choose between local AI models and cloud AI providers.
+**ibia** is a lightweight desktop AI assistant for Windows and macOS built for fast, everyday help without needing to keep a browser tab open. It runs quietly in the background, opens as a floating chat window from a keyboard shortcut, and lets users choose between local AI models and cloud AI providers.
 
 The app is designed around a local-first workflow. Users can connect ibia to local AI runtimes such as Ollama or Foundry Local for private, offline-friendly conversations. When they need stronger cloud models, they can add their own API key for supported providers such as OpenAI, Claude, Grok, or DeepSeek.
 
@@ -8,8 +8,9 @@ ibia is useful for quick writing help, summarizing notes, asking coding question
 
 ## Key Features
 
-- **Floating desktop chat:** Open or hide the assistant quickly with a global hotkey.
-- **Tray background mode:** Keep ibia running quietly and accessible from the Windows tray.
+- **Floating desktop chat:** Open or hide the assistant quickly with a global hotkey, which the user can rebind.
+- **Breathe:** Instead of waiting to be summoned, ibia can fade itself into view, hold, and fade away again on a loop the user controls. Hovering it keeps it on screen.
+- **Tray background mode:** Keep ibia running quietly and accessible from the Windows tray or the macOS menu bar.
 - **Local AI support:** Use local models through supported runtimes for privacy-sensitive or offline work.
 - **Cloud provider support:** Use OpenAI, Claude, Grok, or DeepSeek with the user's own API key.
 - **Document context:** Add notes, code files, study materials, or text documents so ibia can search and use relevant context.
@@ -18,7 +19,7 @@ ibia is useful for quick writing help, summarizing notes, asking coding question
 
 ## Who It Is For
 
-ibia is for Windows users who want AI assistance available at the system level. It is especially useful for students, developers, writers, researchers, and productivity-focused users who want a fast assistant that can work with both private local models and powerful cloud models.
+ibia is for desktop users who want AI assistance available at the system level. It is especially useful for students, developers, writers, researchers, and productivity-focused users who want a fast assistant that can work with both private local models and powerful cloud models.
 
 ## Privacy Model
 
@@ -26,4 +27,4 @@ ibia does not ship with built-in API keys. Users bring their own keys if they wa
 
 ## Simple Description
 
-**ibia is a privacy-friendly Windows AI launcher that gives users a fast floating assistant powered by local or cloud AI.**
+**ibia is a privacy-friendly desktop AI launcher that gives users a fast floating assistant powered by local or cloud AI.**

@@ -165,6 +165,66 @@
         <div class="muted" id="keyStatus">Key: not set</div>
       </div>
 
+      <div class="settingsSection">
+        <div class="settingsSectionHead">
+          <div class="settingsTitle">How ibia appears</div>
+          <div class="settingsSectionSub">
+            Breathe fades ibia in, holds it, then fades it out again — hover it and it stays.
+          </div>
+        </div>
+
+        <div class="settingsGrid">
+          <div class="settingsRow">
+            <label class="label" for="appearModeSelect">Appear with</label>
+            <select id="appearModeSelect" class="select">
+              <option value="shortcut">Shortcut keys only</option>
+              <option value="breathe">Breathe only</option>
+              <option value="both">Shortcut keys + Breathe</option>
+            </select>
+          </div>
+
+          <div class="settingsRow">
+            <label class="label" for="shortcutInput">Shortcut keys</label>
+            <div class="shortcutField">
+              <input
+                id="shortcutInput"
+                class="input shortcutInput"
+                type="text"
+                readonly
+                placeholder="Click, then press your keys"
+              />
+              <button class="iconBtn small" id="shortcutResetBtn" type="button">Reset</button>
+            </div>
+          </div>
+
+          <div class="settingsRow">
+            <label class="label" for="breatheVisibleInput">Stays visible for (seconds)</label>
+            <input
+              id="breatheVisibleInput"
+              class="input"
+              type="number"
+              min="1"
+              max="600"
+              step="1"
+            />
+          </div>
+
+          <div class="settingsRow">
+            <label class="label" for="breatheHiddenInput">Stays away for (seconds)</label>
+            <input
+              id="breatheHiddenInput"
+              class="input"
+              type="number"
+              min="1"
+              max="600"
+              step="1"
+            />
+          </div>
+        </div>
+
+        <div class="settingsHint" id="appearHint"></div>
+      </div>
+
       <div class="settingsHint" id="settingsHint">
         Local (Auto) tries Ollama first, then Foundry Local. Paste any supported cloud API key and the app will detect the provider for you.
       </div>
