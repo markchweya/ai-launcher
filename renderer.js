@@ -25,6 +25,12 @@ const apiKeyInput = document.getElementById("apiKeyInput");
 const saveKeyBtn = document.getElementById("saveKeyBtn");
 const keyStatus = document.getElementById("keyStatus");
 const settingsHint = document.getElementById("settingsHint");
+const appearModeSelect = document.getElementById("appearModeSelect");
+const shortcutInput = document.getElementById("shortcutInput");
+const shortcutResetBtn = document.getElementById("shortcutResetBtn");
+const breatheVisibleInput = document.getElementById("breatheVisibleInput");
+const breatheHiddenInput = document.getElementById("breatheHiddenInput");
+const appearHint = document.getElementById("appearHint");
 const libraryUploadBtn = document.getElementById("libraryUploadBtn");
 const libraryDropZone = document.getElementById("libraryDropZone");
 const libraryList = document.getElementById("libraryList");
@@ -35,6 +41,25 @@ const themeIconSun = document.getElementById("themeIconSun");
 
 const uploadBtn = document.getElementById("uploadBtn");
 const fileMemory = document.getElementById("fileMemory");
+
+document.body.dataset.platform = window.api?.platform || "unknown";
+
+// Tell the main process the user is actually using the window, so Breathe stops
+// fading it out mid-sentence.
+let lastEngageAt = 0;
+function reportEngagement() {
+  if (!window.api?.engage) return;
+
+  const now = Date.now();
+  if (now - lastEngageAt < 1000) return;
+
+  lastEngageAt = now;
+  window.api.engage();
+}
+
+document.addEventListener("mousedown", reportEngagement, true);
+document.addEventListener("keydown", reportEngagement, true);
+document.addEventListener("wheel", reportEngagement, { capture: true, passive: true });
 
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful desktop assistant. Be friendly, practical, and concise.";
 const SPEED_PROFILES = {
@@ -90,6 +115,10 @@ let persistTimer = null;
 let libraryDragDepth = 0;
 let currentLocalSpeedMode = "fast";
 let displayName = "";
+let storedShortcut = "";
+let defaultShortcut = "";
+let capturingShortcut = false;
+const isMacPlatform = (window.api?.platform || "") === "darwin";
 const librarySearchCache = new Map();
 
 function createInitialChatHistory() {
@@ -284,12 +313,36 @@ function isNearBottom(element, threshold = 140) {
   return element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
 }
 
-function addBubble(text, kind) {
+function editIconSvg() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 20h9"></path>
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+    </svg>
+  `;
+}
+
+function addBubble(text, kind, options = {}) {
   const stick = isNearBottom(messagesDiv);
   const div = document.createElement("div");
   const isError = /\*\*(Could not answer|Could not add|Could not load|Library upload failed|Upload failed|Library drop failed)\*\*/i.test(String(text || ""));
   div.className = `msg ${kind}${isError ? " errorMsg" : ""}`;
-  div.innerHTML = renderMessage(text);
+
+  if (Number.isInteger(options.historyIndex)) {
+    div.dataset.historyIndex = String(options.historyIndex);
+  }
+
+  const canEdit = kind === "you" && Number.isInteger(options.historyIndex);
+  div.innerHTML = `
+    <div class="msgBody">${renderMessage(text)}</div>
+    ${canEdit ? `
+      <div class="msgActions">
+        <button class="msgActionBtn" type="button" data-edit-message="${options.historyIndex}" title="Edit message" aria-label="Edit message">
+          ${editIconSvg()}
+        </button>
+      </div>
+    ` : ""}
+  `;
   messagesDiv.appendChild(div);
 
   if (stick) {
@@ -700,14 +753,16 @@ function refreshEmptyGreeting() {
 function renderChatHistory() {
   messagesDiv.innerHTML = "";
 
-  const visibleMessages = chatHistory.filter((message) => message.role !== "system" && String(message.content || "").trim());
+  const visibleMessages = chatHistory
+    .map((message, index) => ({ ...message, index }))
+    .filter((message) => message.role !== "system" && String(message.content || "").trim());
   if (!visibleMessages.length) {
     greet();
     return;
   }
 
   for (const message of visibleMessages) {
-    addBubble(message.content, message.role === "assistant" ? "ai" : "you");
+    addBubble(message.content, message.role === "assistant" ? "ai" : "you", { historyIndex: message.index });
   }
 }
 
@@ -801,6 +856,120 @@ async function loadSettingsUI() {
   currentLocalSpeedMode = settings.localSpeedMode || "fast";
   speedModeSelect.value = currentLocalSpeedMode;
   updateKeyStatus(settings);
+  updateAppearanceUI(settings);
+}
+
+const SHORTCUT_KEY_NAMES = {
+  Space: "Space",
+  Tab: "Tab",
+  Enter: "Return",
+  Backspace: "Backspace",
+  Delete: "Delete",
+  Escape: "Escape",
+  ArrowUp: "Up",
+  ArrowDown: "Down",
+  ArrowLeft: "Left",
+  ArrowRight: "Right",
+  Home: "Home",
+  End: "End",
+  PageUp: "PageUp",
+  PageDown: "PageDown",
+  Comma: ",",
+  Period: ".",
+  Slash: "/",
+  Backslash: "\\",
+  Semicolon: ";",
+  Quote: "'",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Minus: "-",
+  Equal: "="
+};
+
+function acceleratorFromEvent(event) {
+  const parts = [];
+  if (event.ctrlKey) parts.push("Control");
+  if (event.metaKey) parts.push("Command");
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey) parts.push("Shift");
+
+  const code = event.code || "";
+  let key = "";
+
+  if (/^Key[A-Z]$/.test(code)) key = code.slice(3);
+  else if (/^Digit\d$/.test(code)) key = code.slice(5);
+  else if (/^Numpad\d$/.test(code)) key = `num${code.slice(6)}`;
+  else if (/^F\d{1,2}$/.test(code)) key = code;
+  else if (SHORTCUT_KEY_NAMES[code]) key = SHORTCUT_KEY_NAMES[code];
+
+  if (!key || !parts.length) return "";
+
+  parts.push(key);
+  return parts.join("+");
+}
+
+function prettyShortcut(accelerator) {
+  if (!accelerator) return "";
+
+  return String(accelerator)
+    .split("+")
+    .map((part) => {
+      if (part === "Control") return "Ctrl";
+      if (part === "Command" || part === "CommandOrControl") return "Cmd";
+      if (part === "Alt") return isMacPlatform ? "Option" : "Alt";
+      return part;
+    })
+    .join(" + ");
+}
+
+function updateAppearanceUI(settings) {
+  if (!appearModeSelect) return;
+
+  const mode = settings.appearMode || "both";
+  appearModeSelect.value = mode;
+
+  storedShortcut = settings.shortcut || settings.defaultShortcut || "";
+  defaultShortcut = settings.defaultShortcut || "";
+  shortcutInput.value = prettyShortcut(storedShortcut);
+
+  breatheVisibleInput.value = Math.round((settings.breatheVisibleMs || 5000) / 1000);
+  breatheHiddenInput.value = Math.round((settings.breatheHiddenMs || 5000) / 1000);
+
+  const breatheOn = mode === "breathe" || mode === "both";
+  const shortcutOn = mode === "shortcut" || mode === "both";
+
+  shortcutInput.disabled = !shortcutOn;
+  shortcutResetBtn.disabled = !shortcutOn;
+  breatheVisibleInput.disabled = !breatheOn;
+  breatheHiddenInput.disabled = !breatheOn;
+
+  if (!shortcutOn) {
+    appearHint.textContent = "Breathe only: ibia shows itself on a timer. Hover it to keep it on screen.";
+    return;
+  }
+
+  const active = settings.activeShortcut || "";
+  const activeNote = active && active !== storedShortcut
+    ? ` Currently active: ${prettyShortcut(active)} (your pick was taken by another app).`
+    : "";
+
+  appearHint.textContent = breatheOn
+    ? `Both: press ${prettyShortcut(storedShortcut)} any time, and ibia also fades itself in and out.${activeNote}`
+    : `Shortcut only: press ${prettyShortcut(storedShortcut)} to show or hide ibia.${activeNote}`;
+}
+
+async function saveAppearance(patch) {
+  if (!window.api?.settingsSetAppearance) {
+    showToast("Settings API not wired");
+    return;
+  }
+
+  const result = await window.api.settingsSetAppearance(patch);
+  if (!result?.ok) {
+    showToast(result?.error || "Could not update how ibia appears");
+  }
+
+  await loadSettingsUI();
 }
 
 async function refreshHealth() {
@@ -952,6 +1121,36 @@ async function prepareHistoryForSend(history, latestQuery) {
   return out;
 }
 
+async function requestAssistantReply(latestQuery) {
+  const typing = addBubble("", "ai");
+  typing.classList.add("thinkingMsg");
+  typing.innerHTML = `<span class="thinkingDots" aria-label="Thinking"><span></span><span></span><span></span></span>`;
+
+  try {
+    const payloadHistory = await prepareHistoryForSend(chatHistory, latestQuery);
+    const reply = await window.api.ask({
+      messages: payloadHistory,
+      media: buildMediaAttachments()
+    });
+    typing.classList.remove("thinkingMsg");
+    typing.innerHTML = `<div class="msgBody">${renderMessage(reply)}</div>`;
+    chatHistory.push({ role: "assistant", content: reply });
+    lastAssistantReply = reply;
+    scheduleConversationSave();
+
+    if (isNearBottom(messagesDiv)) {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+  } catch (error) {
+    const friendlyError = userMessageFromError(error);
+    const textValue = `**Could not answer**\n\n${friendlyError}`;
+    typing.classList.remove("thinkingMsg");
+    typing.classList.add("errorMsg");
+    typing.innerHTML = `<div class="msgBody">${renderMessage(textValue)}</div>`;
+    showToast(friendlyError);
+  }
+}
+
 async function sendMessage(text) {
   const message = text.trim();
   if (!message) return;
@@ -970,38 +1169,92 @@ async function sendMessage(text) {
     removeEmptyStateNow();
   }
 
-  addBubble(message, "you");
+  const userMessageIndex = chatHistory.length;
+  addBubble(message, "you", { historyIndex: userMessageIndex });
   chatHistory.push({ role: "user", content: message });
   scheduleConversationSave();
 
-  const typing = addBubble("", "ai");
-  typing.classList.add("thinkingMsg");
-  typing.innerHTML = `<span class="thinkingDots" aria-label="Thinking"><span></span><span></span><span></span></span>`;
-
   try {
-    const payloadHistory = await prepareHistoryForSend(chatHistory, message);
-    const reply = await window.api.ask({
-      messages: payloadHistory,
-      media: buildMediaAttachments()
-    });
-    typing.classList.remove("thinkingMsg");
-    typing.innerHTML = renderMessage(reply);
-    chatHistory.push({ role: "assistant", content: reply });
-    lastAssistantReply = reply;
-    scheduleConversationSave();
-
-    if (isNearBottom(messagesDiv)) {
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
-  } catch (error) {
-    const friendlyError = userMessageFromError(error);
-    const textValue = `**Could not answer**\n\n${friendlyError}`;
-    typing.classList.remove("thinkingMsg");
-    typing.innerHTML = renderMessage(textValue);
-    showToast(friendlyError);
+    await requestAssistantReply(message);
   } finally {
     busy = false;
     if (queue.length) setTimeout(() => sendMessage(queue.shift()), 120);
+    input.focus();
+  }
+}
+
+function resizeEditTextarea(textarea) {
+  textarea.style.height = "0px";
+  textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
+}
+
+function startEditingMessage(historyIndex) {
+  if (busy) {
+    showToast("Wait for the current answer to finish first");
+    return;
+  }
+
+  const message = chatHistory[historyIndex];
+  if (!message || message.role !== "user") return;
+
+  const bubble = messagesDiv.querySelector(`.msg.you[data-history-index="${historyIndex}"]`);
+  if (!bubble || bubble.classList.contains("editingMsg")) return;
+
+  const currentText = String(message.content || "");
+  bubble.classList.add("editingMsg");
+  bubble.innerHTML = `
+    <textarea class="msgEditInput" rows="1">${escapeHtml(currentText)}</textarea>
+    <div class="msgEditActions">
+      <button class="msgEditBtn primary" type="button" data-save-edit="${historyIndex}">Save</button>
+      <button class="msgEditBtn" type="button" data-cancel-edit="${historyIndex}">Cancel</button>
+    </div>
+  `;
+
+  const textarea = bubble.querySelector(".msgEditInput");
+  textarea.focus();
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  resizeEditTextarea(textarea);
+}
+
+function cancelEditingMessage(historyIndex) {
+  renderChatHistory();
+  const bubble = messagesDiv.querySelector(`.msg.you[data-history-index="${historyIndex}"]`);
+  bubble?.scrollIntoView({ block: "nearest" });
+}
+
+async function saveEditedMessage(historyIndex) {
+  if (busy) return;
+
+  const bubble = messagesDiv.querySelector(`.msg.you[data-history-index="${historyIndex}"]`);
+  const textarea = bubble?.querySelector(".msgEditInput");
+  const nextText = String(textarea?.value || "").trim();
+  const message = chatHistory[historyIndex];
+
+  if (!message || message.role !== "user") return;
+  if (!nextText) {
+    showToast("Message cannot be empty");
+    textarea?.focus();
+    return;
+  }
+
+  const previousText = String(message.content || "").trim();
+  if (nextText === previousText) {
+    cancelEditingMessage(historyIndex);
+    return;
+  }
+
+  busy = true;
+  queue = [];
+  chatHistory[historyIndex] = { ...message, content: nextText };
+  chatHistory = chatHistory.slice(0, historyIndex + 1);
+  lastAssistantReply = [...chatHistory].reverse().find((item) => item.role === "assistant")?.content || "";
+  renderChatHistory();
+  scheduleConversationSave();
+
+  try {
+    await requestAssistantReply(nextText);
+  } finally {
+    busy = false;
     input.focus();
   }
 }
@@ -1017,6 +1270,49 @@ historyBtn.addEventListener("click", async () => {
 });
 
 historyCloseBtn.addEventListener("click", closeHistory);
+
+messagesDiv.addEventListener("click", async (event) => {
+  const editButton = event.target.closest("[data-edit-message]");
+  if (editButton) {
+    startEditingMessage(Number(editButton.getAttribute("data-edit-message")));
+    return;
+  }
+
+  const saveButton = event.target.closest("[data-save-edit]");
+  if (saveButton) {
+    await saveEditedMessage(Number(saveButton.getAttribute("data-save-edit")));
+    return;
+  }
+
+  const cancelButton = event.target.closest("[data-cancel-edit]");
+  if (cancelButton) {
+    cancelEditingMessage(Number(cancelButton.getAttribute("data-cancel-edit")));
+  }
+});
+
+messagesDiv.addEventListener("input", (event) => {
+  if (event.target.classList.contains("msgEditInput")) {
+    resizeEditTextarea(event.target);
+  }
+});
+
+messagesDiv.addEventListener("keydown", async (event) => {
+  if (!event.target.classList.contains("msgEditInput")) return;
+
+  const bubble = event.target.closest("[data-history-index]");
+  const historyIndex = Number(bubble?.dataset.historyIndex);
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    cancelEditingMessage(historyIndex);
+    return;
+  }
+
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    await saveEditedMessage(historyIndex);
+  }
+});
 
 settingsBtn.addEventListener("click", () => {
   if (settingsPanel.classList.contains("open")) closeSettings();
@@ -1075,6 +1371,90 @@ speedModeSelect.addEventListener("change", async () => {
   showToast(`Local mode: ${speedModeLabel(currentLocalSpeedMode)}`);
   await loadSettingsUI();
   await refreshHealth();
+});
+
+appearModeSelect.addEventListener("change", async () => {
+  await saveAppearance({ mode: appearModeSelect.value });
+  showToast(
+    appearModeSelect.value === "shortcut"
+      ? "Shortcut keys only"
+      : appearModeSelect.value === "breathe"
+        ? "Breathe only"
+        : "Shortcut keys + Breathe"
+  );
+});
+
+function commitBreatheDuration(field, key) {
+  const seconds = Math.min(600, Math.max(1, Math.round(Number(field.value) || 0)));
+  field.value = seconds;
+  return saveAppearance({ [key]: seconds * 1000 });
+}
+
+breatheVisibleInput.addEventListener("change", () => {
+  commitBreatheDuration(breatheVisibleInput, "visibleMs");
+});
+
+breatheHiddenInput.addEventListener("change", () => {
+  commitBreatheDuration(breatheHiddenInput, "hiddenMs");
+});
+
+shortcutInput.addEventListener("focus", () => {
+  capturingShortcut = true;
+  shortcutInput.value = "Press your keys...";
+  shortcutInput.classList.add("capturing");
+});
+
+shortcutInput.addEventListener("blur", () => {
+  capturingShortcut = false;
+  shortcutInput.classList.remove("capturing");
+  shortcutInput.value = prettyShortcut(storedShortcut);
+});
+
+shortcutInput.addEventListener("keydown", async (event) => {
+  if (!capturingShortcut) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (event.key === "Escape") {
+    shortcutInput.blur();
+    return;
+  }
+
+  const accelerator = acceleratorFromEvent(event);
+  if (!accelerator) {
+    shortcutInput.value = "Add Ctrl, Alt, Shift or Cmd...";
+    return;
+  }
+
+  if (!window.api?.settingsSetShortcut) {
+    showToast("Settings API not wired");
+    return;
+  }
+
+  const result = await window.api.settingsSetShortcut(accelerator);
+  if (!result?.ok) {
+    showToast(result?.error || "Could not set that shortcut");
+  } else {
+    showToast(`Shortcut set to ${prettyShortcut(accelerator)}`);
+  }
+
+  capturingShortcut = false;
+  shortcutInput.blur();
+  await loadSettingsUI();
+});
+
+shortcutResetBtn.addEventListener("click", async () => {
+  if (!window.api?.settingsSetShortcut || !defaultShortcut) return;
+
+  const result = await window.api.settingsSetShortcut(defaultShortcut);
+  if (!result?.ok) {
+    showToast(result?.error || "Could not reset the shortcut");
+  } else {
+    showToast(`Shortcut reset to ${prettyShortcut(defaultShortcut)}`);
+  }
+
+  await loadSettingsUI();
 });
 
 displayNameInput.addEventListener("input", () => {

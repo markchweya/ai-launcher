@@ -9,7 +9,9 @@
     "site": "npm --prefix website run dev",
     "site:build": "npm --prefix website run build",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "pack:mac": "electron-builder --mac --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac"
   },
   "devDependencies": {
     "electron": "30.0.5",
@@ -30,6 +32,9 @@
       "package.json",
       "scripts/extract_assets.py",
       "build/icon.ico",
+      "build/icon.icns",
+      "build/icon.png",
+      "build/entitlements.mac.plist",
       "!**/.env",
       "!**/.env.*",
       "!dist/**",
@@ -39,6 +44,27 @@
     "win": {
       "target": ["nsis"],
       "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity",
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "LSMinimumSystemVersion": "11.0",
+        "NSHighResolutionCapable": true
+      }
+    },
+    "dmg": {
+      "backgroundColor": "#10141F",
+      "iconSize": 96
     },
     "nsis": {
       "oneClick": true,

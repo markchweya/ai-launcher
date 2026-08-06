@@ -1,8 +1,11 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("api", {
+  platform: process.platform,
   ask: (history) => ipcRenderer.invoke("ai:ask", history),
   health: () => ipcRenderer.invoke("ai:health"),
+
+  engage: () => ipcRenderer.send("win:engaged"),
 
   hide: () => ipcRenderer.invoke("win:hide"),
   minimize: () => ipcRenderer.invoke("win:minimize"),
@@ -18,6 +21,8 @@ contextBridge.exposeInMainWorld("api", {
   settingsSetOpenAIKey: (key) => ipcRenderer.invoke("settings:setApiKey", key),
   settingsSetDisplayName: (name) => ipcRenderer.invoke("settings:setDisplayName", name),
   settingsSetLocalSpeedMode: (mode) => ipcRenderer.invoke("settings:setLocalSpeedMode", mode),
+  settingsSetAppearance: (payload) => ipcRenderer.invoke("settings:setAppearance", payload),
+  settingsSetShortcut: (accelerator) => ipcRenderer.invoke("settings:setShortcut", accelerator),
   settingsSetFoundryPrefer: (value) => ipcRenderer.invoke("settings:setFoundryPrefer", value),
   pickFiles: () => ipcRenderer.invoke("files:pick"),
   loadFilePaths: (paths) => ipcRenderer.invoke("files:loadPaths", paths),

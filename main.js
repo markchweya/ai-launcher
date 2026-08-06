@@ -38,9 +38,20 @@ const TEXT_FILE_EXTENSIONS = new Set([
 ]);
 
 const LOCAL_PROVIDER_IDS = new Set(["local-auto", "ollama", "foundry"]);
+const APPEAR_MODES = new Set(["shortcut", "breathe", "both"]);
+const BREATHE_VISIBLE_DEFAULT_MS = 5000;
+const BREATHE_HIDDEN_DEFAULT_MS = 5000;
+const BREATHE_MIN_MS = 1000;
+const BREATHE_MAX_MS = 600000;
 const WINDOWS_APP_ID = "com.markchweya.ibia";
-const APP_ICON_PATH = path.join(__dirname, "build", "icon.ico");
+const IS_MAC = process.platform === "darwin";
+const IS_WINDOWS = process.platform === "win32";
+const APP_ICON_PATH = path.join(__dirname, "build", IS_MAC ? "icon.png" : "icon.ico");
 const SECRET_ENCODING_PREFIX = "safeStorage:v1:";
+const DEFAULT_SHORTCUT = IS_MAC ? "Command+Shift+I" : "Control+Alt+I";
+const FALLBACK_SHORTCUTS = IS_MAC
+  ? ["Command+Shift+I", "Command+Alt+I"]
+  : ["Control+Alt+I", "Control+Shift+I"];
 
 if (process.platform === "win32") {
   app.setAppUserModelId(WINDOWS_APP_ID);
@@ -209,6 +220,28 @@ const CLOUD_PROVIDERS = {
 let win = null;
 let tray = null;
 
+// Breathe mode: the window fades itself in and out so ibia can be reached
+// without touching the global shortcut.
+const AMBIENT_FADE_IN_MS = 900;
+const AMBIENT_FADE_OUT_MS = 1100;
+const AMBIENT_FIRST_SHOW_MS = 1500;
+const AMBIENT_TICK_MS = 16;
+const AMBIENT_HOVER_POLL_MS = 80;
+
+let ambientVisibleMs = BREATHE_VISIBLE_DEFAULT_MS;
+let ambientHiddenMs = BREATHE_HIDDEN_DEFAULT_MS;
+let ambientEnabled = true;
+let activeShortcut = "";
+let ambientPhase = "idle";
+let ambientFadeTimer = null;
+let ambientPhaseTimer = null;
+let ambientHoverTimer = null;
+let ambientManual = false;
+let ambientHovered = false;
+let ambientInteractive = true;
+let ambientOwnsHide = false;
+let windowOpacity = 1;
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 const userCache = path.join(app.getPath("userData"), "Cache");
 fs.mkdirSync(userCache, { recursive: true });
@@ -291,12 +324,22 @@ function loadSettings() {
       local_speed_mode: LOCAL_SPEED_MODES.has(data.local_speed_mode) ? data.local_speed_mode : "fast",
       local_prefer: data.local_prefer || data.foundry_prefer || "phi-3.5",
       foundry_prefer: data.foundry_prefer || data.local_prefer || "phi-3.5",
+      appear_mode: APPEAR_MODES.has(data.appear_mode) ? data.appear_mode : "both",
+      breathe_visible_ms: clampBreatheMs(data.breathe_visible_ms, BREATHE_VISIBLE_DEFAULT_MS),
+      breathe_hidden_ms: clampBreatheMs(data.breathe_hidden_ms, BREATHE_HIDDEN_DEFAULT_MS),
+      shortcut: String(data.shortcut || "").trim() || DEFAULT_SHORTCUT,
       openai_api_key: "",
       last_api_detection_error: data.last_api_detection_error || ""
     };
   } catch {
     return defaultSettings();
   }
+}
+
+function clampBreatheMs(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(BREATHE_MAX_MS, Math.max(BREATHE_MIN_MS, Math.round(number)));
 }
 
 function defaultSettings() {
@@ -309,6 +352,10 @@ function defaultSettings() {
     local_speed_mode: "fast",
     local_prefer: "phi-3.5",
     foundry_prefer: "phi-3.5",
+    appear_mode: "both",
+    breathe_visible_ms: BREATHE_VISIBLE_DEFAULT_MS,
+    breathe_hidden_ms: BREATHE_HIDDEN_DEFAULT_MS,
+    shortcut: DEFAULT_SHORTCUT,
     openai_api_key: "",
     last_api_detection_error: ""
   };
@@ -328,6 +375,10 @@ function saveSettings(partial) {
     local_speed_mode: LOCAL_SPEED_MODES.has(merged.local_speed_mode) ? merged.local_speed_mode : "fast",
     local_prefer: merged.local_prefer || merged.foundry_prefer || "phi-3.5",
     foundry_prefer: merged.foundry_prefer || merged.local_prefer || "phi-3.5",
+    appear_mode: APPEAR_MODES.has(merged.appear_mode) ? merged.appear_mode : "both",
+    breathe_visible_ms: clampBreatheMs(merged.breathe_visible_ms, BREATHE_VISIBLE_DEFAULT_MS),
+    breathe_hidden_ms: clampBreatheMs(merged.breathe_hidden_ms, BREATHE_HIDDEN_DEFAULT_MS),
+    shortcut: String(merged.shortcut || "").trim() || DEFAULT_SHORTCUT,
     last_api_detection_error: merged.last_api_detection_error || ""
   };
 
@@ -379,19 +430,53 @@ function saveLibraryStore(store) {
   return store;
 }
 
-function resolvePythonExecutable() {
-  const bundled = path.join(
-    os.homedir(),
-    ".cache",
-    "codex-runtimes",
-    "codex-primary-runtime",
-    "dependencies",
-    "python",
-    "python.exe"
-  );
+function pythonCandidates() {
+  if (IS_WINDOWS) {
+    const bundled = path.join(
+      os.homedir(),
+      ".cache",
+      "codex-runtimes",
+      "codex-primary-runtime",
+      "dependencies",
+      "python",
+      "python.exe"
+    );
 
-  if (fs.existsSync(bundled)) return bundled;
-  return "python";
+    const list = ["python", "python3", "py"];
+    return fs.existsSync(bundled) ? [bundled, ...list] : list;
+  }
+
+  if (IS_MAC) {
+    // macOS ships no bare `python`, and Homebrew installs land outside the
+    // PATH that a bundled .app inherits.
+    return [
+      "python3",
+      "/opt/homebrew/bin/python3",
+      "/usr/local/bin/python3",
+      "/usr/bin/python3",
+      "python"
+    ];
+  }
+
+  return ["python3", "python"];
+}
+
+let cachedPythonExecutable = "";
+
+async function resolvePythonExecutable() {
+  if (cachedPythonExecutable) return cachedPythonExecutable;
+
+  for (const candidate of pythonCandidates()) {
+    try {
+      await execFileAsync(candidate, ["--version"], { windowsHide: true, timeout: 8000 });
+      cachedPythonExecutable = candidate;
+      return candidate;
+    } catch {
+      // Try the next interpreter.
+    }
+  }
+
+  return "";
 }
 
 function createConversationId() {
@@ -897,7 +982,22 @@ async function extractFilesFromPaths(filePaths) {
 }
 
 async function extractSingleFileFromPath(script, filePath) {
-  const python = resolvePythonExecutable();
+  const python = await resolvePythonExecutable();
+
+  if (!python) {
+    return {
+      files: [],
+      errors: [
+        {
+          path: filePath,
+          name: path.basename(filePath),
+          error: IS_MAC
+            ? "Python 3 is required to read this file type. Install it with `brew install python` or from python.org."
+            : "Python 3 is required to read this file type. Install it from python.org."
+        }
+      ]
+    };
+  }
 
   try {
     const stdout = await new Promise((resolve, reject) => {
@@ -971,6 +1071,15 @@ async function saveTextToFile(content, defaultPath = "") {
 
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const macWindowOptions = IS_MAC
+    ? {
+        frame: true,
+        titleBarStyle: "hiddenInset",
+        trafficLightPosition: { x: 17, y: 19 }
+      }
+    : {
+        frame: false
+      };
 
   win = new BrowserWindow({
     title: "ibia",
@@ -978,7 +1087,6 @@ function createWindow() {
     height: 690,
     x: Math.max(20, width - 580),
     y: Math.max(20, height - 740),
-    frame: false,
     transparent: true,
     resizable: true,
     minimizable: true,
@@ -988,6 +1096,7 @@ function createWindow() {
     alwaysOnTop: true,
     icon: APP_ICON_PATH,
     backgroundColor: "#00000000",
+    ...macWindowOptions,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -995,6 +1104,11 @@ function createWindow() {
       sandbox: true
     }
   });
+
+  if (IS_MAC) {
+    // Let Breathe reach the user on whichever Space or fullscreen app is front.
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) {
@@ -1020,6 +1134,15 @@ function createWindow() {
     if (win?.webContents) win.webContents.send("win:shown");
   });
 
+  win.on("hide", () => {
+    handleWindowHidden();
+  });
+
+
+  win.webContents.once("did-finish-load", () => {
+    startAmbientCycle(AMBIENT_FIRST_SHOW_MS);
+  });
+
   win.on("maximize", () => {
     if (win?.webContents) win.webContents.send("win:state", { maximized: true });
   });
@@ -1042,13 +1165,310 @@ function createWindow() {
 function toggleWindow() {
   if (!win) return;
 
-  if (win.isVisible()) {
+  const reachable = win.isVisible() && (ambientManual || windowOpacity > 0.5);
+  if (reachable) {
     win.hide();
     return;
   }
 
+  showWindowNow();
+}
+
+function showWindowNow() {
+  if (!win) return;
+
+  enterManualMode();
+  if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+}
+
+function easeInOut(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function setWindowOpacity(value) {
+  if (!win || win.isDestroyed()) return;
+
+  const next = Math.min(1, Math.max(0, value));
+  windowOpacity = next;
+  win.setOpacity(next);
+}
+
+function setAmbientInteractive(interactive) {
+  if (!win || win.isDestroyed()) return;
+  if (ambientInteractive === interactive) return;
+
+  ambientInteractive = interactive;
+  win.setIgnoreMouseEvents(!interactive);
+}
+
+function stopAmbientFade() {
+  if (!ambientFadeTimer) return;
+  clearInterval(ambientFadeTimer);
+  ambientFadeTimer = null;
+}
+
+function stopAmbientHoverWatch() {
+  if (ambientHoverTimer) {
+    clearInterval(ambientHoverTimer);
+    ambientHoverTimer = null;
+  }
+  ambientHovered = false;
+}
+
+function clearAmbientTimers() {
+  stopAmbientFade();
+  stopAmbientHoverWatch();
+
+  if (ambientPhaseTimer) {
+    clearTimeout(ambientPhaseTimer);
+    ambientPhaseTimer = null;
+  }
+}
+
+function scheduleAmbient(delayMs, action) {
+  if (ambientPhaseTimer) clearTimeout(ambientPhaseTimer);
+  ambientPhaseTimer = setTimeout(() => {
+    ambientPhaseTimer = null;
+    action();
+  }, delayMs);
+}
+
+function ambientRunning() {
+  return ambientEnabled && !ambientManual && !!win && !win.isDestroyed();
+}
+
+function fadeWindowTo(target, durationMs, onDone) {
+  stopAmbientFade();
+  if (!win || win.isDestroyed()) return;
+
+  const from = windowOpacity;
+  const delta = target - from;
+
+  if (Math.abs(delta) < 0.005 || durationMs <= 0) {
+    setWindowOpacity(target);
+    if (onDone) onDone();
+    return;
+  }
+
+  const steps = Math.max(1, Math.round(durationMs / AMBIENT_TICK_MS));
+  let step = 0;
+
+  ambientFadeTimer = setInterval(() => {
+    if (!win || win.isDestroyed()) {
+      stopAmbientFade();
+      return;
+    }
+
+    step += 1;
+    const progress = Math.min(1, step / steps);
+    setWindowOpacity(from + delta * easeInOut(progress));
+
+    if (progress >= 1) {
+      stopAmbientFade();
+      if (onDone) onDone();
+    }
+  }, AMBIENT_TICK_MS);
+}
+
+function cursorOverWindow() {
+  if (!win || win.isDestroyed() || !win.isVisible()) return false;
+
+  try {
+    const point = screen.getCursorScreenPoint();
+    const bounds = win.getBounds();
+    return (
+      point.x >= bounds.x &&
+      point.x < bounds.x + bounds.width &&
+      point.y >= bounds.y &&
+      point.y < bounds.y + bounds.height
+    );
+  } catch {
+    return false;
+  }
+}
+
+function startAmbientHoverWatch() {
+  if (ambientHoverTimer) return;
+
+  ambientHoverTimer = setInterval(() => {
+    if (!ambientRunning()) return;
+
+    const over = cursorOverWindow();
+    if (over === ambientHovered) return;
+
+    ambientHovered = over;
+    if (over) onAmbientHoverEnter();
+    else onAmbientHoverLeave();
+  }, AMBIENT_HOVER_POLL_MS);
+}
+
+function onAmbientHoverEnter() {
+  if (!ambientRunning()) return;
+
+  // The cursor is on the window: cancel any pending fade-out and come back to
+  // full opacity from wherever the current fade left off.
+  if (ambientPhaseTimer) {
+    clearTimeout(ambientPhaseTimer);
+    ambientPhaseTimer = null;
+  }
+
+  setAmbientInteractive(true);
+  ambientPhase = "fade-in";
+
+  const remaining = Math.max(0, 1 - windowOpacity);
+  fadeWindowTo(1, Math.round(AMBIENT_FADE_IN_MS * remaining), () => {
+    ambientPhase = "visible";
+  });
+}
+
+function onAmbientHoverLeave() {
+  if (!ambientRunning()) return;
+  if (ambientPhase !== "visible" && ambientPhase !== "fade-in") return;
+
+  // Restart the visible countdown once the cursor is away again.
+  scheduleAmbient(ambientVisibleMs, ambientFadeOutStep);
+}
+
+function ambientFadeInStep() {
+  if (!ambientRunning()) return;
+
+  ambientPhase = "fade-in";
+  setWindowOpacity(0);
+  setAmbientInteractive(false);
+
+  if (!win.isVisible()) {
+    // showInactive keeps the user's current app in front; ibia just appears.
+    win.showInactive();
+  }
+
+  startAmbientHoverWatch();
+  ambientHovered = cursorOverWindow();
+
+  fadeWindowTo(1, AMBIENT_FADE_IN_MS, () => {
+    if (!ambientRunning()) return;
+
+    ambientPhase = "visible";
+    setAmbientInteractive(true);
+    if (ambientHovered) return;
+
+    scheduleAmbient(ambientVisibleMs, ambientFadeOutStep);
+  });
+}
+
+function ambientFadeOutStep() {
+  if (!ambientRunning()) return;
+
+  if (ambientHovered || cursorOverWindow()) {
+    ambientHovered = true;
+    scheduleAmbient(ambientVisibleMs, ambientFadeOutStep);
+    return;
+  }
+
+  ambientPhase = "fade-out";
+  setAmbientInteractive(false);
+
+  fadeWindowTo(0, AMBIENT_FADE_OUT_MS, () => {
+    if (!ambientRunning()) return;
+
+    ambientPhase = "waiting";
+    stopAmbientHoverWatch();
+    ambientOwnsHide = true;
+    win.hide();
+    scheduleAmbient(ambientHiddenMs, ambientFadeInStep);
+  });
+}
+
+function startAmbientCycle(delayMs = ambientHiddenMs) {
+  if (!ambientEnabled || ambientManual || !win || win.isDestroyed()) return;
+
+  ambientPhase = "waiting";
+  scheduleAmbient(delayMs, ambientFadeInStep);
+}
+
+function enterManualMode() {
+  ambientManual = true;
+  ambientPhase = "manual";
+  clearAmbientTimers();
+  setAmbientInteractive(true);
+
+  // Caught mid-fade: ease up to full rather than snapping.
+  if (win && !win.isDestroyed() && win.isVisible() && windowOpacity < 1) {
+    fadeWindowTo(1, Math.round(AMBIENT_FADE_IN_MS * (1 - windowOpacity)));
+    return;
+  }
+
+  setWindowOpacity(1);
+}
+
+function handleWindowHidden() {
+  // Ambient hid the window itself; the next cycle is already scheduled.
+  if (ambientOwnsHide) {
+    ambientOwnsHide = false;
+    return;
+  }
+
+  clearAmbientTimers();
+  ambientManual = false;
+  ambientPhase = "idle";
+  setAmbientInteractive(true);
+  setWindowOpacity(1);
+  startAmbientCycle(ambientHiddenMs);
+}
+
+// Applies the stored appearance preferences to the live window without a
+// restart: breathe on/off, and the two durations that drive the cycle.
+function applyAppearanceSettings(settings = loadSettings()) {
+  const mode = APPEAR_MODES.has(settings.appear_mode) ? settings.appear_mode : "both";
+  const previousHiddenMs = ambientHiddenMs;
+
+  ambientVisibleMs = clampBreatheMs(settings.breathe_visible_ms, BREATHE_VISIBLE_DEFAULT_MS);
+  ambientHiddenMs = clampBreatheMs(settings.breathe_hidden_ms, BREATHE_HIDDEN_DEFAULT_MS);
+
+  const wantBreathe = mode === "breathe" || mode === "both";
+  const changed = wantBreathe !== ambientEnabled || ambientHiddenMs !== previousHiddenMs;
+  ambientEnabled = wantBreathe;
+
+  if (!win || win.isDestroyed()) return mode;
+
+  if (!ambientEnabled) {
+    clearAmbientTimers();
+    ambientPhase = ambientManual ? "manual" : "idle";
+    setAmbientInteractive(true);
+
+    // Never leave a half-faded window behind.
+    if (win.isVisible() && !ambientManual) {
+      ambientOwnsHide = true;
+      win.hide();
+    }
+
+    setWindowOpacity(1);
+    return mode;
+  }
+
+  if (win.isVisible()) {
+    // Already on screen: let the user finish, breathing resumes once hidden.
+    ambientManual = true;
+    ambientPhase = "manual";
+    return mode;
+  }
+
+  if (changed || ambientPhase === "idle" || !ambientPhaseTimer) {
+    ambientManual = false;
+    startAmbientCycle(ambientHiddenMs);
+  }
+
+  return mode;
+}
+
+function setAppearMode(mode) {
+  const value = APPEAR_MODES.has(mode) ? mode : "both";
+  saveSettings({ appear_mode: value });
+  applyAppearanceSettings();
+  registerShortcuts();
+  refreshTrayMenu();
+  return value;
 }
 
 function createTray() {
@@ -1056,13 +1476,46 @@ function createTray() {
 
   if (fs.existsSync(APP_ICON_PATH)) {
     icon = nativeImage.createFromPath(APP_ICON_PATH);
+    if (IS_MAC) icon = icon.resize({ width: 18, height: 18 });
   }
 
   tray = new Tray(icon);
   tray.setToolTip("ibia");
 
+  refreshTrayMenu();
+  tray.on("click", () => toggleWindow());
+}
+
+function refreshTrayMenu() {
+  if (!tray || tray.isDestroyed?.()) return;
+
+  const mode = loadSettings().appear_mode;
+
   const menu = Menu.buildFromTemplate([
-    { label: "Show / Hide", click: () => toggleWindow() },
+    {
+      label: "Show / Hide",
+      accelerator: activeShortcut || undefined,
+      click: () => toggleWindow()
+    },
+    { type: "separator" },
+    {
+      label: "Appear with shortcut only",
+      type: "radio",
+      checked: mode === "shortcut",
+      click: () => setAppearMode("shortcut")
+    },
+    {
+      label: "Appear with Breathe only",
+      type: "radio",
+      checked: mode === "breathe",
+      click: () => setAppearMode("breathe")
+    },
+    {
+      label: "Appear with both",
+      type: "radio",
+      checked: mode === "both",
+      click: () => setAppearMode("both")
+    },
     { type: "separator" },
     {
       label: "Quit",
@@ -1074,18 +1527,117 @@ function createTray() {
   ]);
 
   tray.setContextMenu(menu);
-  tray.on("click", () => toggleWindow());
 }
 
-function registerShortcuts() {
-  const shortcuts = ["Control+Alt+I", "Control+Shift+I"];
+// Registers the user's chosen accelerator, falling back to the built-in ones if
+// it is unavailable. Returns the accelerator that actually took effect.
+function registerShortcuts(preferred) {
+  globalShortcut.unregisterAll();
+  activeShortcut = "";
 
-  for (const accelerator of shortcuts) {
-    const ok = globalShortcut.register(accelerator, toggleWindow);
-    if (ok) {
-      break;
+  const settings = loadSettings();
+  const mode = APPEAR_MODES.has(settings.appear_mode) ? settings.appear_mode : "both";
+
+  if (mode === "breathe") {
+    // The user asked for Breathe only; leave the global keys free.
+    return "";
+  }
+
+  const wanted = String(preferred || settings.shortcut || DEFAULT_SHORTCUT).trim();
+  const candidates = [wanted, ...FALLBACK_SHORTCUTS].filter(Boolean);
+
+  for (const accelerator of candidates) {
+    try {
+      if (globalShortcut.register(accelerator, toggleWindow)) {
+        activeShortcut = accelerator;
+        return accelerator;
+      }
+    } catch {
+      // Invalid accelerator string: try the next candidate.
     }
   }
+
+  return "";
+}
+
+function setShortcut(accelerator) {
+  const wanted = String(accelerator || "").trim();
+  if (!wanted) return { ok: false, error: "Press a key combination first." };
+
+  if (!/\+/.test(wanted)) {
+    return { ok: false, error: "Use at least one modifier, for example Ctrl+Alt+I." };
+  }
+
+  const applied = registerShortcuts(wanted);
+
+  if (applied !== wanted) {
+    // Put the previous shortcut back so the user is never left without one.
+    registerShortcuts();
+    refreshTrayMenu();
+    return {
+      ok: false,
+      error: `${wanted} is already used by another app.`,
+      shortcut: activeShortcut
+    };
+  }
+
+  saveSettings({ shortcut: wanted });
+  refreshTrayMenu();
+  return { ok: true, shortcut: wanted };
+}
+
+function createApplicationMenu() {
+  if (!IS_MAC) return;
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        {
+          label: "Quit ibia",
+          accelerator: "Command+Q",
+          click: () => {
+            app.isQuiting = true;
+            app.quit();
+          }
+        }
+      ]
+    },
+    {
+      label: "Window",
+      submenu: [
+        // No accelerator here: the toggle is owned by the user's global
+        // shortcut, and a duplicate menu key would fire the toggle twice.
+        { label: "Show / Hide ibia", click: () => toggleWindow() },
+        { role: "minimize" },
+        { role: "zoom" },
+        { type: "separator" },
+        { role: "front" }
+      ]
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" }
+      ]
+    }
+  ]);
+
+  Menu.setApplicationMenu(menu);
 }
 
 async function ollamaListModels() {
@@ -1628,8 +2180,58 @@ function wireIPC() {
       cloudModel: settings.cloud_model || "",
       displayName: settings.display_name || "",
       localSpeedMode: getLocalSpeedMode(settings),
-      foundryPrefer: settings.local_prefer || settings.foundry_prefer || "phi-3.5"
+      foundryPrefer: settings.local_prefer || settings.foundry_prefer || "phi-3.5",
+      appearMode: APPEAR_MODES.has(settings.appear_mode) ? settings.appear_mode : "both",
+      breatheVisibleMs: clampBreatheMs(settings.breathe_visible_ms, BREATHE_VISIBLE_DEFAULT_MS),
+      breatheHiddenMs: clampBreatheMs(settings.breathe_hidden_ms, BREATHE_HIDDEN_DEFAULT_MS),
+      shortcut: settings.shortcut || DEFAULT_SHORTCUT,
+      activeShortcut,
+      defaultShortcut: DEFAULT_SHORTCUT
     };
+  });
+
+  ipcMain.handle("settings:setAppearance", (event, payload) => {
+    const data = payload && typeof payload === "object" ? payload : {};
+    const patch = {};
+
+    if (data.mode !== undefined) {
+      if (!APPEAR_MODES.has(data.mode)) {
+        return { ok: false, error: "Invalid appearance mode" };
+      }
+      patch.appear_mode = data.mode;
+    }
+
+    if (data.visibleMs !== undefined) {
+      patch.breathe_visible_ms = clampBreatheMs(data.visibleMs, BREATHE_VISIBLE_DEFAULT_MS);
+    }
+
+    if (data.hiddenMs !== undefined) {
+      patch.breathe_hidden_ms = clampBreatheMs(data.hiddenMs, BREATHE_HIDDEN_DEFAULT_MS);
+    }
+
+    if (!Object.keys(patch).length) return { ok: false, error: "Nothing to update" };
+
+    const merged = saveSettings(patch);
+    applyAppearanceSettings(merged);
+    registerShortcuts();
+    refreshTrayMenu();
+
+    return {
+      ok: true,
+      mode: merged.appear_mode,
+      visibleMs: merged.breathe_visible_ms,
+      hiddenMs: merged.breathe_hidden_ms,
+      activeShortcut
+    };
+  });
+
+  ipcMain.handle("settings:setShortcut", (event, accelerator) => setShortcut(accelerator));
+
+  // The renderer reports real interaction (a click or a keystroke inside the
+  // window). That, not window focus, is what pins ibia on screen.
+  ipcMain.on("win:engaged", () => {
+    if (!win || win.isDestroyed() || ambientManual) return;
+    enterManualMode();
   });
 
   ipcMain.handle("settings:setProvider", (event, provider) => {
@@ -1834,20 +2436,26 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on("second-instance", () => {
     if (!win) return;
-    if (win.isMinimized()) win.restore();
-    if (!win.isVisible()) win.show();
-    win.focus();
+    showWindowNow();
   });
 
   app.whenReady().then(() => {
+    applyAppearanceSettings();
+    createApplicationMenu();
     createWindow();
     createTray();
     wireIPC();
     registerShortcuts();
   });
+
+  app.on("activate", () => {
+    if (!win) createWindow();
+    showWindowNow();
+  });
 }
 
 app.on("will-quit", () => {
+  clearAmbientTimers();
   globalShortcut.unregisterAll();
 });
 

@@ -6,7 +6,17 @@ const root = path.join(__dirname, "..");
 const outDir = path.join(root, "build");
 fs.mkdirSync(outDir, { recursive: true });
 
-const sizes = [16, 24, 32, 48, 64, 128, 256];
+const icoSizes = [16, 24, 32, 48, 64, 128, 256];
+const appIconSize = 1024;
+const icnsTypes = [
+  ["icp4", 16],
+  ["icp5", 32],
+  ["icp6", 64],
+  ["ic07", 128],
+  ["ic08", 256],
+  ["ic09", 512],
+  ["ic10", 1024]
+];
 
 function clamp(value, min = 0, max = 255) {
   return Math.max(min, Math.min(max, value));
@@ -156,11 +166,28 @@ function encodeIco(entries) {
   return Buffer.concat([header, directory, ...entries.map((entry) => entry.png)]);
 }
 
-const entries = sizes.map((size) => ({
+function encodeIcns(entries) {
+  const chunks = entries.map((entry) => {
+    const type = Buffer.from(entry.type, "ascii");
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(entry.png.length + 8, 0);
+    return Buffer.concat([type, length, entry.png]);
+  });
+
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(chunks.reduce((total, chunk) => total + chunk.length, 8), 0);
+  return Buffer.concat([Buffer.from("icns", "ascii"), length, ...chunks]);
+}
+
+const entries = icoSizes.map((size) => ({
   size,
   png: encodePng(size, size, drawIcon(size))
 }));
 
 fs.writeFileSync(path.join(outDir, "icon.ico"), encodeIco(entries));
-fs.writeFileSync(path.join(outDir, "icon.png"), entries[entries.length - 1].png);
-console.log("Generated build/icon.ico and build/icon.png");
+fs.writeFileSync(path.join(outDir, "icon.png"), encodePng(appIconSize, appIconSize, drawIcon(appIconSize)));
+fs.writeFileSync(path.join(outDir, "icon.icns"), encodeIcns(icnsTypes.map(([type, size]) => ({
+  type,
+  png: encodePng(size, size, drawIcon(size))
+}))));
+console.log("Generated build/icon.ico, build/icon.icns, and build/icon.png");
